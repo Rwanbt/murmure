@@ -398,26 +398,42 @@ mod tests {
         use std::num::{NonZeroU16, NonZeroU32};
         use rodio::buffer::SamplesBuffer;
 
-        // Drive Rodio's real Player source in memory, without OS audio devices.
+        // Rodio v0.22 samples control flags through periodic_access every 5 ms,
+        // not every sample. At 24 kHz that is about 120 frames. Verify that
+        // pause/resume/stop take effect within four callback intervals, rather
+        // than claiming an impossible sample-exact transition.
+        const MAX_CONTROL_LATENCY_FRAMES: usize = 480;
         let (player, mut output) = rodio::Player::new();
         let mono = NonZeroU16::new(1).unwrap();
         let sample_rate = NonZeroU32::new(24_000).unwrap();
         player.append(SamplesBuffer::new(
-            mono, sample_rate, vec![0.5, -0.5, 0.4, -0.4, 0.3, -0.3],
+            mono, sample_rate, vec![0.5_f32; 4_096],
         ));
         assert_eq!(output.next(), Some(0.5));
 
         assert_eq!(apply_player_request(&player, &Request::Pause), PlayerTransition::Paused);
         assert!(player.is_paused());
-        assert_eq!(output.next(), Some(0.0));
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            "Rodio did not silence playback within 20 ms after Pause"
+        );
+        for _ in 0..8 {
+            assert_eq!(output.next(), Some(0.0), "paused playback leaked samples");
+        }
 
         assert_eq!(apply_player_request(&player, &Request::Resume), PlayerTransition::Playing);
         assert!(!player.is_paused());
-        assert_eq!(output.next(), Some(-0.5));
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.5)),
+            "Rodio did not resume within 20 ms"
+        );
 
         assert_eq!(apply_player_request(&player, &Request::Stop), PlayerTransition::Stopped);
-        assert_eq!(output.next(), Some(0.0));
-        assert!(player.empty());
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            "Rodio did not silence playback within 20 ms after Stop"
+        );
+        assert!(player.empty(), "Stop did not empty the playback queue");
     }
 
     #[test]
