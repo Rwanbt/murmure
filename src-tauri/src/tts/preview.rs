@@ -1000,11 +1000,11 @@ mod tests {
     #[test]
     fn actual_audio_queue_obeys_pause_resume_and_stop_without_a_sound_card() {
         use rodio::buffer::SamplesBuffer;
-        use std::num::NonZeroU32;
+        use std::num::{NonZeroU16, NonZeroU32};
 
         // Drive Rodio's real Player source in memory, without OS audio devices.
         let (player, mut output) = rodio::Player::new();
-        let mono = NonZeroU32::new(1).unwrap();
+        let mono = NonZeroU16::new(1).unwrap();
         let sample_rate = NonZeroU32::new(24_000).unwrap();
         player.append(SamplesBuffer::new(
             mono,
@@ -1042,7 +1042,7 @@ mod tests {
 
         let (player, mut output) = rodio::Player::new();
         player.append(SamplesBuffer::new(
-            NonZeroU32::new(1).unwrap(),
+            NonZeroU16::new(1).unwrap(),
             NonZeroU32::new(24_000).unwrap(),
             vec![0.25, -0.25, 0.2],
         ));
