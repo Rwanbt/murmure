@@ -69,6 +69,17 @@ jobs:
               run: pnpm tauri build ${{ inputs.dry && '--no-bundle' || '' }}
               shell: pwsh
 
+            - name: Test Windows-native selection and shortcut contracts
+              if: ${{ inputs.dry }}
+              shell: pwsh
+              run: |
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::selection_windows::tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows selection unit tests failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib commands::shortcuts::tts_shortcut_tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut unit tests failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib shortcuts::registry::tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut registry tests failed' }
+
             - name: Prepare unsigned artifacts
               if: ${{ inputs.dry == false }}
               shell: pwsh
