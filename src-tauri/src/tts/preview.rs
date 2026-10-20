@@ -172,6 +172,7 @@ fn binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = app;
         Err("Verified Pocket TTS binary is not yet configured for this operating system".to_string())
     }
 }
