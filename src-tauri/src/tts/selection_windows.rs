@@ -3,6 +3,7 @@
 //! Untrusted providers may refuse TextPattern; fail closed without fallback.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use parking_lot::Mutex;
 use tauri::{AppHandle, Emitter};
 
 use windows::Win32::System::Com::{
@@ -14,6 +15,28 @@ use windows::Win32::UI::Accessibility::{
 
 const MAX_SELECTED_CHARS: usize = 1_000;
 static READ_ACTIVE: AtomicBool = AtomicBool::new(false);
+// Serialize the last eligibility check with Stop: a slow UIA provider must
+// never enqueue newly synthesized speech after an explicit cancellation.
+static SELECTION_GENERATION: Mutex<u64> = Mutex::new(0);
+
+pub fn invalidate_pending_selection() {
+    let mut epoch = SELECTION_GENERATION.lock();
+    *epoch = epoch.wrapping_add(1);
+}
+
+fn dispatch_if_current(
+    generation: &Mutex<u64>,
+    captured: u64,
+    submit: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    let current = generation.lock();
+    if *current != captured {
+        return Err("Selection reading was cancelled".to_string());
+    }
+    // Keep this mutex held until the TTS command enters the queue.
+    // The Stop command acquires it to invalidate all pending captures.
+    submit()
+}
 
 struct ReadGuard;
 impl Drop for ReadGuard {
@@ -94,12 +117,15 @@ pub fn speak_selection(app: &AppHandle) {
     if READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
         return;
     }
+    let captured = *SELECTION_GENERATION.lock();
     let app = app.clone();
     std::thread::spawn(move || {
         let _guard = ReadGuard;
-        if let Err(detail) = capture_selection()
-            .and_then(|text| crate::tts::preview::pocket_tts_speak(app.clone(), text))
-        {
+        if let Err(detail) = capture_selection().and_then(|text| {
+            dispatch_if_current(&SELECTION_GENERATION, captured, || {
+                crate::tts::preview::pocket_tts_speak(app.clone(), text)
+            })
+        }) {
             // Emit diagnostics only, never text content or application names.
             let _ = app.emit("pocket-tts-selection-error", detail);
         }
@@ -113,6 +139,26 @@ mod tests {
     #[test]
     fn selection_limit_cannot_exceed_tts_transport_limit() {
         assert!(MAX_SELECTED_CHARS <= 1_000);
+    }
+
+    #[test]
+    fn cancelled_pending_selection_never_dispatches_to_tts() {
+        use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+        let generation = Mutex::new(3_u64);
+        let dispatched = AtomicUsize::new(0);
+        // A stop raced while UIA was resolving the selected text.
+        *generation.lock() = 4;
+        let result = dispatch_if_current(&generation, 3, || {
+            dispatched.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(())
+        });
+        assert!(result.is_err());
+        assert_eq!(dispatched.load(AtomicOrdering::SeqCst), 0);
+        assert!(dispatch_if_current(&generation, 4, || {
+            dispatched.fetch_add(1, AtomicOrdering::SeqCst);
+            Ok(())
+        }).is_ok());
+        assert_eq!(dispatched.load(AtomicOrdering::SeqCst), 1);
     }
 
     #[test]
