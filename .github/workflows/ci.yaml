@@ -100,6 +100,20 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french" -GenerateFrench
 
+    pocket-tts-offline-cache-windows:
+        name: Pocket TTS cached French WAV without network
+        if: github.head_ref == 'test/pocket-tts-offline-cache-windows'
+        runs-on: windows-latest
+        timeout-minutes: 25
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Block binary outbound access after caching and generate French WAV
+              shell: pwsh
+              run: |
+                  ./scripts/test-pocket-tts-offline-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-offline"
+
     compile-linux:
         uses: ./.github/workflows/build-linux.yml
         with:
