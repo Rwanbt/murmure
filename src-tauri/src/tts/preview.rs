@@ -3,7 +3,7 @@
 //! Future arbitrary-text synthesis MUST use a different privacy-safe transport.
 
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,12 +13,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 
 const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française locale de Murmure.";
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
+// Derived from the v4.0.0 official Windows archive (SHA256 of archive verified
+// before extraction in scripts/verify-pocket-tts-windows.ps1).
+#[cfg(target_os = "windows")]
+const WINDOWS_SIDECAR_SHA256: &str = "9b52ad9d8721869c0adcb98e62a5e89e8fbfef0abdc397b4189db411456c6023";
 
 // Serialize model-consent revocation against queuing new requests. The worker
 // remains independent: never hold this lock while generating or playing audio.
@@ -78,38 +83,73 @@ fn cpu_compatible() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct PocketTtsRuntimeStatus {
     installed: bool,
+    verified: bool,
     cpu_compatible: bool,
 }
 
 #[tauri::command]
 pub fn pocket_tts_status() -> PocketTtsRuntimeStatus {
     PocketTtsRuntimeStatus {
-        installed: binary_path().is_ok(),
+        installed: locate_sidecar().is_ok_and(|path| path.is_file()),
+        verified: binary_path().is_ok(),
         cpu_compatible: cpu_compatible(),
     }
+}
+
+fn locate_sidecar() -> Result<PathBuf, String> {
+    // Never search PATH: only the sidecar beside Murmure is eligible.
+    let executable = if cfg!(windows) { "pocket-tts.exe" } else { "pocket-tts" };
+    let application = std::env::current_exe()
+        .map_err(|_| "Unable to locate Murmure executable".to_string())?;
+    let dir = application.parent().ok_or("Unable to locate application directory")?;
+    Ok(dir.join(executable))
+}
+
+fn sha256_hex(path: &Path) -> Result<String, String> {
+    // Bounded-memory streaming hash; a corrupt or unreadable sidecar fails closed.
+    let mut file = File::open(path)
+        .map_err(|_| "Unable to read Pocket TTS executable for verification".to_string())?;
+    let mut hash = Sha256::new();
+    let mut block = [0u8; 64 * 1024];
+    loop {
+        let bytes = file.read(&mut block)
+            .map_err(|_| "Unable to hash Pocket TTS executable".to_string())?;
+        if bytes == 0 {
+            break;
+        }
+        hash.update(&block[..bytes]);
+    }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+fn verify_sidecar(path: &Path, expected_sha256: &str) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|_| "Pocket TTS executable is not installed".to_string())?;
+    if !metadata.file_type().is_file() {
+        return Err("Pocket TTS executable must be a regular file, not a link".to_string());
+    }
+    if !sha256_hex(path)?.eq_ignore_ascii_case(expected_sha256) {
+        return Err("Pocket TTS executable does not match the verified Kyutai release".to_string());
+    }
+    Ok(())
 }
 
 fn binary_path() -> Result<PathBuf, String> {
     if !cpu_compatible() {
         return Err("This Pocket TTS binary requires AVX2 CPU support".to_string());
     }
-    // Require an explicitly installed sidecar beside the Murmure executable.
-    // Never search PATH or invoke a shell when deciding what code to run.
-    let binary = if cfg!(windows) {
-        "pocket-tts.exe"
-    } else {
-        "pocket-tts"
-    };
-    let dir = std::env::current_exe()
-        .map_err(|_| "Unable to locate Murmure executable".to_string())?
-        .parent()
-        .ok_or("Unable to locate application directory")?
-        .to_path_buf();
-    let path = dir.join(binary);
-    if !path.is_file() {
-        return Err("Pocket TTS sidecar is not installed next to Murmure".to_string());
+    // Only the official Windows binary has a vetted digest. Do not silently
+    // allow an arbitrary executable on macOS/Linux until releases are pinned.
+    #[cfg(target_os = "windows")]
+    {
+        let path = locate_sidecar()?;
+        verify_sidecar(&path, WINDOWS_SIDECAR_SHA256)?;
+        Ok(path)
     }
-    Ok(path)
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Verified Pocket TTS binary is not yet configured for this operating system".to_string())
+    }
 }
 
 fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
@@ -401,9 +441,23 @@ mod tests {
     }
 
     #[test]
+    fn verified_sidecar_rejects_tampering_and_untrusted_files() {
+        let file = std::env::temp_dir()
+            .join(format!("murmure-tts-integrity-{}.bin", uuid::Uuid::new_v4()));
+        std::fs::write(&file, b"abc").unwrap();
+        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(verify_sidecar(&file, expected).is_ok());
+        std::fs::write(&file, b"abcd").unwrap();
+        assert!(verify_sidecar(&file, expected).is_err());
+        std::fs::remove_file(&file).unwrap();
+        assert!(verify_sidecar(&file, expected).is_err());
+    }
+
+    #[test]
     fn runtime_status_is_consistent_with_binary_preflight() {
         let status = pocket_tts_status();
-        assert_eq!(status.installed, binary_path().is_ok());
+        assert_eq!(status.installed, locate_sidecar().is_ok_and(|path| path.is_file()));
+        assert_eq!(status.verified, binary_path().is_ok());
         assert_eq!(status.cpu_compatible, cpu_compatible());
         if !status.cpu_compatible {
             assert!(!status.installed);

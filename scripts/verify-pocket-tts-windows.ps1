@@ -41,6 +41,10 @@ Expand-Archive -LiteralPath $zip -DestinationPath $expanded
 $binaries = @(Get-ChildItem -Path $expanded -Recurse -File -Filter 'pocket-tts.exe')
 if ($binaries.Count -ne 1) { throw "Expected one Pocket TTS executable, found $($binaries.Count)" }
 $binary = $binaries[0].FullName
+$binarySha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+$expectedBinarySha256 = "9b52ad9d8721869c0adcb98e62a5e89e8fbfef0abdc397b4189db411456c6023"
+if ($binarySha256 -ne $expectedBinarySha256) { throw "The extracted Pocket TTS executable does not match the pinned Murmure runtime" }
+Write-Output "PASS: Extracted Pocket TTS executable SHA256: $binarySha256"
 
 # Always validate the command line without using speech/model assets.
 # Actual synthesis runs only when -GenerateFrench is explicitly passed.

@@ -15,6 +15,7 @@ interface PreviewEvent {
 
 interface RuntimeStatus {
     installed: boolean;
+    verified: boolean;
     cpuCompatible: boolean;
 }
 
@@ -157,6 +158,11 @@ export const PocketTts = () => {
                         {t('Your CPU does not support AVX2 required by this Pocket TTS executable.')}
                     </p>
                 )}
+                {runtimeStatus && runtimeStatus.cpuCompatible && runtimeStatus.installed && !runtimeStatus.verified && (
+                    <p role="alert" className="text-sm text-red-400" data-testid="pocket-tts-unverified">
+                        {t('Pocket TTS executable is present but does not match a verified Kyutai release for this system. Speech is disabled.')}
+                    </p>
+                )}
                 {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.installed && (
                     <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-missing">
                         {t('Pocket TTS executable not found next to Murmure. Obtain the official runtime from Kyutai and verify its checksum before installing it.')}{' '}
@@ -256,7 +262,7 @@ export const PocketTts = () => {
                     <button
                         type="button"
                         className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
-                        disabled={busy || consentBusy || !downloadApproved || !speechText.trim() || runtimeStatus?.installed !== true}
+                        disabled={busy || consentBusy || !downloadApproved || !speechText.trim() || runtimeStatus?.verified !== true}
                         onClick={() => void run('pocket_tts_speak', { text: speechText })}
                         data-testid="pocket-tts-speak"
                     >
@@ -265,7 +271,7 @@ export const PocketTts = () => {
                     <button
                         type="button"
                         className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
-                        disabled={busy || consentBusy || !downloadApproved || runtimeStatus?.installed !== true}
+                        disabled={busy || consentBusy || !downloadApproved || runtimeStatus?.verified !== true}
                         onClick={() => void run('pocket_tts_preview')}
                         data-testid="pocket-tts-play"
                     >
