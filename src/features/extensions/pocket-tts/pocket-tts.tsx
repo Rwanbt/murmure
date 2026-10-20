@@ -18,6 +18,22 @@ export const PocketTts = () => {
     const [state, setState] = useState<PreviewState>('idle');
     const [detail, setDetail] = useState<string | null>(null);
     const [speechText, setSpeechText] = useState('');
+    const [model, setModel] = useState('french');
+    const [volume, setVolume] = useState(80);
+
+    useEffect(() => {
+        let active = true;
+        void invoke<{ tts_model: string; tts_volume: number }>('get_all_settings')
+            .then((settings) => {
+                if (!active) return;
+                setModel(settings.tts_model === 'french_24l' ? 'french_24l' : 'french');
+                setVolume(Math.max(0, Math.min(100, settings.tts_volume)));
+            })
+            .catch(() => {
+                if (active) setDetail(t('Unable to load TTS settings.'));
+            });
+        return () => { active = false; };
+    }, [t]);
 
     useEffect(() => {
         let cancelled = false;
@@ -55,6 +71,24 @@ export const PocketTts = () => {
         }
     };
 
+    const updateModel = async (next: string) => {
+        try {
+            await invoke('set_tts_model', { model: next });
+            setModel(next);
+        } catch (error) {
+            setDetail(String(error));
+        }
+    };
+
+    const updateVolume = async (next: number) => {
+        try {
+            await invoke('set_tts_volume', { percent: next });
+            setVolume(next);
+        } catch (error) {
+            setDetail(String(error));
+        }
+    };
+
     const busy = state === 'generating' || state === 'playing' || state === 'paused';
 
     return (
@@ -87,6 +121,37 @@ export const PocketTts = () => {
                     </p>
                 )}
 
+                <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
+                    {t('French speech model')}
+                </label>
+                <select
+                    id="pocket-tts-model"
+                    value={model}
+                    disabled={busy}
+                    onChange={(event) => void updateModel(event.target.value)}
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
+                    data-testid="pocket-tts-model"
+                >
+                    <option value="french">{t('French — efficient CPU model')}</option>
+                    <option value="french_24l">{t('French — 24 layers (larger experimental model)')}</option>
+                </select>
+                <label htmlFor="pocket-tts-volume" className="block text-sm font-medium">
+                    {t('Playback volume')}: {volume}%
+                </label>
+                <input
+                    id="pocket-tts-volume"
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={volume}
+                    onChange={(event) => void updateVolume(Number(event.target.value))}
+                    className="w-full"
+                    data-testid="pocket-tts-volume"
+                />
+                <p className="text-xs text-muted-foreground">
+                    {t('Changes apply to the next playback. Larger models may require more RAM and a separate download.')}
+                </p>
                 <label htmlFor="pocket-tts-text" className="block text-sm font-medium">
                     {t('Text to read aloud')}
                 </label>
