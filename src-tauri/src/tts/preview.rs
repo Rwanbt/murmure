@@ -141,6 +141,35 @@ fn configure_model_source(command: &mut Command, cache_dir: &Path) {
         .env_remove("HF_HUB_CACHE");
 }
 
+/// Apply exactly one transport action to the live playback engine.
+/// Keeping it separate from Tauri events allows deterministic unit tests with
+/// Rodio's in-memory queue, without assuming that CI has an audio device.
+#[derive(Debug, PartialEq, Eq)]
+enum PlayerTransition {
+    Paused,
+    Playing,
+    Stopped,
+    Noop,
+}
+
+fn apply_player_request(player: &rodio::Player, request: &Request) -> PlayerTransition {
+    match request {
+        Request::Pause => {
+            player.pause();
+            PlayerTransition::Paused
+        }
+        Request::Resume => {
+            player.play();
+            PlayerTransition::Playing
+        }
+        Request::Stop => {
+            player.stop();
+            PlayerTransition::Stopped
+        }
+        Request::Preview | Request::Speak(_) => PlayerTransition::Noop,
+    }
+}
+
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
     // A request may have been queued before consent was revoked. Check again
     // in the worker before starting the external model process.
@@ -236,20 +265,16 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
 
     while !player.empty() {
         match rx.recv_timeout(POLL_INTERVAL) {
-            Ok(Request::Pause) => {
-                player.pause();
-                emit(app, "paused", None);
-            }
-            Ok(Request::Resume) => {
-                player.play();
-                emit(app, "playing", None);
-            }
-            Ok(Request::Stop) => {
-                player.stop();
-                emit(app, "stopped", None);
-                return Ok(());
-            }
-            Ok(Request::Preview) | Ok(Request::Speak(_)) | Err(RecvTimeoutError::Timeout) => {}
+            Ok(action) => match apply_player_request(&player, &action) {
+                PlayerTransition::Paused => emit(app, "paused", None),
+                PlayerTransition::Playing => emit(app, "playing", None),
+                PlayerTransition::Stopped => {
+                    emit(app, "stopped", None);
+                    return Ok(());
+                }
+                PlayerTransition::Noop => {}
+            },
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 player.stop();
                 return Ok(());
@@ -366,6 +391,49 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn actual_audio_queue_obeys_pause_resume_and_stop_without_a_sound_card() {
+        use std::num::NonZeroU32;
+        use rodio::buffer::SamplesBuffer;
+
+        // Drive Rodio's real Player source in memory, without OS audio devices.
+        let (player, mut output) = rodio::Player::new();
+        let mono = NonZeroU32::new(1).unwrap();
+        let sample_rate = NonZeroU32::new(24_000).unwrap();
+        player.append(SamplesBuffer::new(
+            mono, sample_rate, vec![0.5, -0.5, 0.4, -0.4, 0.3, -0.3],
+        ));
+        assert_eq!(output.next(), Some(0.5));
+
+        assert_eq!(apply_player_request(&player, &Request::Pause), PlayerTransition::Paused);
+        assert!(player.is_paused());
+        assert_eq!(output.next(), Some(0.0));
+
+        assert_eq!(apply_player_request(&player, &Request::Resume), PlayerTransition::Playing);
+        assert!(!player.is_paused());
+        assert_eq!(output.next(), Some(-0.5));
+
+        assert_eq!(apply_player_request(&player, &Request::Stop), PlayerTransition::Stopped);
+        assert_eq!(output.next(), Some(0.0));
+        assert!(player.empty());
+    }
+
+    #[test]
+    fn spurious_generate_command_does_not_interrupt_existing_player() {
+        use std::num::NonZeroU32;
+        use rodio::buffer::SamplesBuffer;
+
+        let (player, mut output) = rodio::Player::new();
+        player.append(SamplesBuffer::new(
+            NonZeroU32::new(1).unwrap(),
+            NonZeroU32::new(24_000).unwrap(),
+            vec![0.25, -0.25, 0.2],
+        ));
+        assert_eq!(apply_player_request(&player, &Request::Preview), PlayerTransition::Noop);
+        assert_eq!(apply_player_request(&player, &Request::Speak("unused".into())), PlayerTransition::Noop);
+        assert_eq!(output.next(), Some(0.25));
+    }
 
     #[test]
     fn model_source_does_not_inherit_user_huggingface_credentials() {
