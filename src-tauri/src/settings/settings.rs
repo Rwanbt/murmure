@@ -80,6 +80,24 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_default_to_local_french_tts() {
+        let settings = parse_settings(r#"{"language":"fr","sound_volume":50}"#);
+        assert_eq!(settings.tts_model, "french");
+        assert_eq!(settings.tts_volume, 80);
+    }
+
+    #[test]
+    fn tts_model_and_volume_survive_serialization() {
+        let mut settings = AppSettings::default();
+        settings.tts_model = "french_24l".to_string();
+        settings.tts_volume = 35;
+        let json = serde_json::to_string(&settings).unwrap();
+        let restored = parse_settings(&json);
+        assert_eq!(restored.tts_model, "french_24l");
+        assert_eq!(restored.tts_volume, 35);
+    }
+
+    #[test]
     fn missing_auto_insert_defaults_to_true() {
         let settings = parse_settings(r#"{"paste_method":"direct"}"#);
 
