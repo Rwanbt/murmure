@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +19,10 @@ const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française local
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
+
+// Serialize model-consent revocation against queuing new requests. The worker
+// remains independent: never hold this lock while generating or playing audio.
+pub(crate) static MODEL_APPROVAL_LOCK: Mutex<()> = Mutex::new(());
 
 enum Request {
     Preview,
@@ -138,6 +142,9 @@ fn configure_model_source(command: &mut Command, cache_dir: &Path) {
 }
 
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
+    // A request may have been queued before consent was revoked. Check again
+    // in the worker before starting the external model process.
+    require_tts_approval(crate::settings::load_settings(app).tts_model_download_approved)?;
     let binary = binary_path()?;
     let wave = TempWave(std::env::temp_dir().join(format!(
         "murmure-pocket-preview-{}.wav",
@@ -288,6 +295,13 @@ fn require_tts_approval(approved: bool) -> Result<(), String> {
 
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     let is_preview = matches!(&action, Request::Preview | Request::Speak(_));
+    // Gate selection and synthesis dispatch atomically with permission changes.
+    let _approval_guard = if is_preview {
+        Some(MODEL_APPROVAL_LOCK.lock()
+            .map_err(|_| "TTS approval state is unavailable".to_string())?)
+    } else {
+        None
+    };
     if is_preview {
         // This also covers reading selections via a global hotkey. Never
         // start a child process that could fetch model files without opt-in.
