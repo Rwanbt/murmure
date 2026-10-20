@@ -3,6 +3,7 @@
 //! Future arbitrary-text synthesis MUST use a different privacy-safe transport.
 
 use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,10 +17,12 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française locale de Murmure.";
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
+const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
 
 enum Request {
     Preview,
+    Speak(String),
     Pause,
     Resume,
     Stop,
@@ -85,14 +88,14 @@ fn preview_args(output: &Path) -> Vec<std::ffi::OsString> {
         OsString::from("--device"),
         OsString::from("cpu"),
         OsString::from("--text"),
-        OsString::from(PREVIEW_TEXT),
+        OsString::from("-"),
         OsString::from("--output-path"),
         output.as_os_str().to_os_string(),
     ]
     .into()
 }
 
-fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
+fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
     let binary = binary_path()?;
     let wave = TempWave(std::env::temp_dir().join(format!(
         "murmure-pocket-preview-{}.wav",
@@ -102,10 +105,22 @@ fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
     emit(app, "generating", None);
     let mut child = Command::new(binary)
         .args(preview_args(&wave.0))
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "Unable to start Pocket TTS".to_string())?;
+    // Kyutai's --text - reads stdin. Never put document text in argv, where
+    // other processes can inspect it through process listings.
+    let write_result = child.stdin.take()
+        .ok_or_else(|| "Pocket TTS stdin was unavailable".to_string())
+        .and_then(|mut stdin| stdin.write_all(text.as_bytes())
+            .map_err(|_| "Unable to send text to Pocket TTS".to_string()));
+    if let Err(reason) = write_result {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(reason);
+    }
     let started = Instant::now();
 
     loop {
@@ -169,7 +184,7 @@ fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
                 emit(app, "stopped", None);
                 return Ok(());
             }
-            Ok(Request::Preview) | Err(RecvTimeoutError::Timeout) => {}
+            Ok(Request::Preview) | Ok(Request::Speak(_)) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 player.stop();
                 return Ok(());
@@ -190,8 +205,13 @@ pub fn init(app: &AppHandle) {
     let handle = app.clone();
     thread::spawn(move || {
         while let Ok(request) = rx.recv() {
-            if let Request::Preview = request {
-                if let Err(detail) = run_preview(&handle, &rx) {
+            let speech = match request {
+                Request::Preview => Some(PREVIEW_TEXT.to_string()),
+                Request::Speak(text) => Some(text),
+                _ => None,
+            };
+            if let Some(text) = speech {
+                if let Err(detail) = run_speech(&handle, &rx, &text) {
                     emit(&handle, "error", Some(detail));
                 }
                 busy.store(false, Ordering::Release);
@@ -202,9 +222,9 @@ pub fn init(app: &AppHandle) {
 
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     let state = app.state::<PocketPreviewState>();
-    let is_preview = matches!(&action, Request::Preview);
+    let is_preview = matches!(&action, Request::Preview | Request::Speak(_));
     if is_preview && !acquire_preview(&state.busy) {
-        return Err("Pocket TTS preview is already active".to_string());
+        return Err("Pocket TTS is already active".to_string());
     }
     // Late or duplicate transport controls at idle must not wait in the
     // worker queue and unexpectedly stop the user's next preview.
@@ -223,6 +243,21 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
 #[tauri::command]
 pub fn pocket_tts_preview(app: AppHandle) -> Result<(), String> {
     send(&app, Request::Preview)
+}
+
+fn checked_text(input: &str) -> Result<String, String> {
+    if input.chars().count() > MAX_SPEECH_CHARS {
+        return Err("Text exceeds the Pocket TTS length limit".to_string());
+    }
+    let segments = super::text::prepare_speech(input)
+        .map_err(|_| "No readable text was provided".to_string())?;
+    Ok(segments.join(" "))
+}
+
+#[tauri::command]
+pub fn pocket_tts_speak(app: AppHandle, text: String) -> Result<(), String> {
+    let text = checked_text(&text)?;
+    send(&app, Request::Speak(text))
 }
 
 #[tauri::command]
@@ -254,12 +289,19 @@ mod tests {
     }
 
     #[test]
+    fn speak_filters_obvious_secrets_and_requires_text() {
+        assert_eq!(checked_text("Bonjour à tous.\npassword=nepaslire").unwrap(), "Bonjour à tous.");
+        assert!(checked_text("password=secret").is_err());
+        assert!(checked_text(&"é".repeat(MAX_SPEECH_CHARS + 1)).is_err());
+    }
+
+    #[test]
     fn preview_is_french_cpu_only_with_no_runtime_user_text() {
         let args = preview_args(Path::new("preview.wav"));
         let parts: Vec<_> = args.iter().map(|a| a.to_string_lossy()).collect();
         assert!(parts.windows(2).any(|p| p == ["--language", "french"]));
         assert!(parts.windows(2).any(|p| p == ["--device", "cpu"]));
         assert!(parts.windows(2).any(|p| p == ["--voice", "estelle"]));
-        assert!(parts.windows(2).any(|p| p == ["--text", PREVIEW_TEXT]));
+        assert!(parts.windows(2).any(|p| p == ["--text", "-"]));
     }
 }
