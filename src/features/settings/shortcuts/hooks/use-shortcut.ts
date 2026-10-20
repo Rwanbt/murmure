@@ -119,6 +119,11 @@ export const SHORTCUT_CONFIGS = {
         getCommand: 'get_cancel_shortcut',
         setCommand: 'set_cancel_shortcut',
     },
+    ttsReadSelection: {
+        defaultShortcut: 'ctrl+alt+l',
+        getCommand: 'get_tts_read_selection_shortcut',
+        setCommand: 'set_tts_read_selection_shortcut',
+    },
     ttsStop: {
         defaultShortcut: 'ctrl+alt+k',
         getCommand: 'get_tts_stop_shortcut',

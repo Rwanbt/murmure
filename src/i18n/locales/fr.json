@@ -718,5 +718,8 @@
     "Pocket TTS executable not found next to Murmure. Obtain the official runtime from Kyutai and verify its checksum before installing it.": "L’exécutable Pocket TTS est introuvable à côté de Murmure. Récupérez le moteur officiel Kyutai et vérifiez son empreinte avant installation.",
     "Official Pocket TTS release": "Version officielle de Pocket TTS",
     "Stop speech playback": "Arrêter la lecture vocale",
-    "Stop Pocket TTS playback or generation immediately.": "Arrête immédiatement la lecture ou la génération Pocket TTS."
+    "Stop Pocket TTS playback or generation immediately.": "Arrête immédiatement la lecture ou la génération Pocket TTS.",
+    "Read selected text aloud": "Lire la sélection à voix haute",
+    "Read the focused text selection using Windows Accessibility without changing the clipboard.": "Lit la sélection du contrôle actif via l’accessibilité Windows, sans modifier le presse-papiers.",
+    "Unable to subscribe to selection errors.": "Impossible de suivre les erreurs de lecture de sélection."
 }

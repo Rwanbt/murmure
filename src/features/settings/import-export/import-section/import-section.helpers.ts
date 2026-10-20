@@ -134,6 +134,9 @@ const applyShortcuts = async (categories: ExportedCategories): Promise<void> => 
     if (shortcuts.tts_stop_shortcut != null) {
         await invoke('set_tts_stop_shortcut', { binding: shortcuts.tts_stop_shortcut });
     }
+    if (shortcuts.tts_read_selection_shortcut != null && navigator.userAgent.includes('Windows')) {
+        await invoke('set_tts_read_selection_shortcut', { binding: shortcuts.tts_read_selection_shortcut });
+    }
 };
 
 const applyFormattingRules = async (categories: ExportedCategories, strategy: ImportStrategy): Promise<void> => {

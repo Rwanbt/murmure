@@ -49,6 +49,12 @@ impl ShortcutRegistry {
             ShortcutAction::StopTts,
             ActivationMode::PushToTalk,
         );
+        #[cfg(target_os = "windows")]
+        push_if_set(
+            &settings.tts_read_selection_shortcut,
+            ShortcutAction::ReadSelectedTts,
+            ActivationMode::PushToTalk,
+        );
 
         let mode_shortcuts = [
             (&settings.llm_mode_1_shortcut, 0),
@@ -205,6 +211,17 @@ mod tests {
             .iter()
             .find(|b| &b.action == action)
             .cloned()
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn registers_selection_read_shortcut_without_mutating_stt() {
+        let s = AppSettings::default();
+        let registry = ShortcutRegistry::from_settings(&s);
+        let read = find(&registry, &ShortcutAction::ReadSelectedTts).unwrap();
+        assert_eq!(read.keys, parse_binding_keys("ctrl+alt+l"));
+        assert_eq!(find(&registry, &ShortcutAction::StartRecording).unwrap().keys,
+                   parse_binding_keys("ctrl+space"));
     }
 
     #[test]
