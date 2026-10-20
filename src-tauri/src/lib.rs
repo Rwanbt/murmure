@@ -35,6 +35,7 @@ use log::{error, info, warn};
 use model::Model;
 use overlay::tray::setup_tray;
 use smartmic::SmartMicState;
+use tts::preview::{pocket_tts_pause, pocket_tts_preview, pocket_tts_resume, pocket_tts_stop};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{DeviceEventFilter, Manager};
@@ -350,6 +351,7 @@ pub fn run() {
             init_shortcuts(app.handle().clone());
 
             audio::sound::init_sound_system(app.handle());
+            tts::preview::init(app.handle());
 
             audio::output_volume::restore_pending(app.handle());
 
@@ -574,7 +576,11 @@ pub fn run() {
             set_overlay_input_region,
             flash_text_in_overlay,
             hide_overlay_if_idle,
-            is_transform_processing
+            is_transform_processing,
+            pocket_tts_preview,
+            pocket_tts_pause,
+            pocket_tts_resume,
+            pocket_tts_stop
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
