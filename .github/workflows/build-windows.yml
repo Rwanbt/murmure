@@ -81,6 +81,14 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut registry tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows pinned-sidecar installer tests failed' }
+                  # Exercise the exact Rust ZIP extraction with the real pinned
+                  # archive, not merely a mocked SHA or a PowerShell unzip.
+                  $folder = Join-Path $env:RUNNER_TEMP 'pocket-tts-rust-install'
+                  ./scripts/verify-pocket-tts-windows.ps1 -Destination $folder
+                  $env:MURMURE_TTS_OFFICIAL_ARCHIVE = Join-Path $folder 'pocket-tts.zip'
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests::official_archive_extracts_untampered_binary_and_refuses_overwrite -- --exact --ignored
+                  if ($LASTEXITCODE -ne 0) { throw 'Verified Windows ZIP installer integration failed' }
+                  Remove-Item Env:MURMURE_TTS_OFFICIAL_ARCHIVE -ErrorAction SilentlyContinue
 
             - name: Prepare unsigned artifacts
               if: ${{ inputs.dry == false }}
