@@ -720,5 +720,6 @@
     "Stop speech playback": "Arrêter la lecture vocale",
     "Stop Pocket TTS playback or generation immediately.": "Arrête immédiatement la lecture ou la génération Pocket TTS.",
     "Read selected text aloud": "Lire la sélection à voix haute",
-    "Read the focused text selection using Windows Accessibility without changing the clipboard.": "Lit la sélection du contrôle actif via l’accessibilité Windows, sans modifier le presse-papiers."
+    "Read the focused text selection using Windows Accessibility without changing the clipboard.": "Lit la sélection du contrôle actif via l’accessibilité Windows, sans modifier le presse-papiers.",
+    "Unable to subscribe to selection errors.": "Impossible de suivre les erreurs de lecture de sélection."
 }
