@@ -17,6 +17,7 @@ mod settings;
 mod shortcuts;
 mod smartmic;
 mod stats;
+pub mod tts;
 mod utils;
 mod wake_word;
 
