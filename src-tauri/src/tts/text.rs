@@ -66,7 +66,7 @@ fn segment_text(text: &str) -> Vec<String> {
 
         let len = current.chars().count();
         let sentence_end = matches!(c, '.' | '!' | '?' | '。' | '！' | '？');
-        if (sentence_end && len >= 12) || len >= MAX_SEGMENT_CHARS {
+        if sentence_end || len >= MAX_SEGMENT_CHARS {
             let piece = current.trim();
             if !piece.is_empty() {
                 segments.push(piece.to_owned());
@@ -174,6 +174,12 @@ mod tests {
         let parts = prepare_speech(&"é".repeat(600)).unwrap();
         assert!(parts.iter().all(|p| p.chars().count() <= MAX_SEGMENT_CHARS));
         assert_eq!(parts.concat(), "é".repeat(600));
+    }
+
+    #[test]
+    fn short_french_sentences_remain_distinct() {
+        let parts = prepare_speech("Oui. Non. Bien.").unwrap();
+        assert_eq!(parts, vec!["Oui.", "Non.", "Bien."]);
     }
 
     #[test]

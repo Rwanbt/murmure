@@ -77,12 +77,12 @@ fn binary_path() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn preview_args(output: &Path) -> Vec<std::ffi::OsString> {
+fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
     use std::ffi::OsString;
     [
         OsString::from("generate"),
         OsString::from("--language"),
-        OsString::from("french"),
+        OsString::from(model),
         OsString::from("--voice"),
         OsString::from("estelle"),
         OsString::from("--device"),
@@ -102,9 +102,15 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
         uuid::Uuid::new_v4()
     )));
 
+    let settings = crate::settings::load_settings(app);
+    let model = if settings.tts_model == "french_24l" {
+        "french_24l"
+    } else {
+        "french"
+    };
     emit(app, "generating", None);
     let mut child = Command::new(binary)
-        .args(preview_args(&wave.0))
+        .args(preview_args(&wave.0, model))
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -166,6 +172,7 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
         .open_sink_or_fallback()
         .map_err(|_| "Unable to open output device".to_string())?;
     let player = rodio::Player::connect_new(output.mixer());
+    player.set_volume(f32::from(settings.tts_volume.min(100)) / 100.0);
     player.append(source);
     emit(app, "playing", None);
 
@@ -297,9 +304,12 @@ mod tests {
 
     #[test]
     fn preview_is_french_cpu_only_with_no_runtime_user_text() {
-        let args = preview_args(Path::new("preview.wav"));
+        let args = preview_args(Path::new("preview.wav"), "french");
         let parts: Vec<_> = args.iter().map(|a| a.to_string_lossy()).collect();
         assert!(parts.windows(2).any(|p| p == ["--language", "french"]));
+        let large = preview_args(Path::new("preview.wav"), "french_24l");
+        let pieces: Vec<_> = large.iter().map(|a| a.to_string_lossy()).collect();
+        assert!(pieces.windows(2).any(|p| p == ["--language", "french_24l"]));
         assert!(parts.windows(2).any(|p| p == ["--device", "cpu"]));
         assert!(parts.windows(2).any(|p| p == ["--voice", "estelle"]));
         assert!(parts.windows(2).any(|p| p == ["--text", "-"]));
