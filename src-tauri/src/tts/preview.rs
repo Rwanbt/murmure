@@ -206,6 +206,11 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     if is_preview && !acquire_preview(&state.busy) {
         return Err("Pocket TTS preview is already active".to_string());
     }
+    // Late or duplicate transport controls at idle must not wait in the
+    // worker queue and unexpectedly stop the user's next preview.
+    if !is_preview && !state.busy.load(Ordering::Acquire) {
+        return Ok(());
+    }
     if state.tx.send(action).is_err() {
         if is_preview {
             state.busy.store(false, Ordering::Release);
