@@ -310,6 +310,8 @@ pub fn pocket_tts_resume(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    super::selection_windows::invalidate_pending_selection();
     send(&app, Request::Stop)
 }
 
