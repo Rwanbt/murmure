@@ -91,6 +91,15 @@ pub fn set_tts_model(app: AppHandle, model: String) -> Result<(), String> {
     crate::settings::save_settings(&app, &settings)
 }
 
+/// Explicit per-installation consent for model/voice downloads.
+/// Importing a .murmure backup never sets this permission.
+#[command]
+pub fn set_tts_model_download_approved(app: AppHandle, approved: bool) -> Result<(), String> {
+    let mut settings = crate::settings::load_settings(&app);
+    settings.tts_model_download_approved = approved;
+    crate::settings::save_settings(&app, &settings)
+}
+
 #[command]
 pub fn set_tts_volume(app: AppHandle, percent: u8) -> Result<(), String> {
     let mut settings = crate::settings::load_settings(&app);
