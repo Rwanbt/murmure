@@ -126,6 +126,17 @@ fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
     .into()
 }
 
+fn configure_model_source(command: &mut Command, cache_dir: &Path) {
+    // Isolate Murmure's model cache from system-wide Hugging Face credentials.
+    // Do not inherit a personal token or an alternative untrusted model host.
+    command.env("HF_HOME", cache_dir)
+        .env("HF_ENDPOINT", "https://huggingface.co")
+        .env_remove("HF_TOKEN")
+        .env_remove("HUGGING_FACE_HUB_TOKEN")
+        .env_remove("HUGGINGFACE_HUB_CACHE")
+        .env_remove("HF_HUB_CACHE");
+}
+
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
     let binary = binary_path()?;
     let wave = TempWave(std::env::temp_dir().join(format!(
@@ -139,8 +150,17 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     } else {
         "french"
     };
+    // The first, user-approved invocation may download the public model.
+    // Restrict the CLI to a dedicated app cache with no inherited HF login.
+    let cache_dir = app.path().app_cache_dir()
+        .map_err(|_| "Unable to locate Murmure's model cache".to_string())?
+        .join("pocket-tts");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|_| "Unable to create the local TTS model cache".to_string())?;
+    let mut command = Command::new(binary);
+    configure_model_source(&mut command, &cache_dir);
     emit(app, "generating", None);
-    let mut child = Command::new(binary)
+    let mut child = command
         .args(preview_args(&wave.0, model))
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -332,6 +352,22 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_source_does_not_inherit_user_huggingface_credentials() {
+        let mut command = Command::new("pocket-tts");
+        configure_model_source(&mut command, Path::new("isolated-cache"));
+        let entries: std::collections::HashMap<_, _> = command.get_envs()
+            .map(|(name, value)| (name.to_string_lossy().into_owned(),
+                                    value.map(|v| v.to_string_lossy().into_owned())))
+            .collect();
+        assert_eq!(entries.get("HF_TOKEN"), Some(&None));
+        assert_eq!(entries.get("HUGGINGFACE_HUB_CACHE"), Some(&None));
+        assert_eq!(entries.get("HF_ENDPOINT"),
+                   Some(&Some("https://huggingface.co".to_string())));
+        assert_eq!(entries.get("HF_HOME"),
+                   Some(&Some("isolated-cache".to_string())));
+    }
 
     #[test]
     fn model_download_opt_in_is_required_before_any_generation() {
