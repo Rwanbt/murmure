@@ -22,6 +22,7 @@ const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
 // Derived from the v4.0.0 official Windows archive (SHA256 of archive verified
 // before extraction in scripts/verify-pocket-tts-windows.ps1).
+#[cfg(target_os = "windows")]
 const WINDOWS_SIDECAR_SHA256: &str = "9b52ad9d8721869c0adcb98e62a5e89e8fbfef0abdc397b4189db411456c6023";
 
 // Serialize model-consent revocation against queuing new requests. The worker
@@ -137,15 +138,18 @@ fn binary_path() -> Result<PathBuf, String> {
     if !cpu_compatible() {
         return Err("This Pocket TTS binary requires AVX2 CPU support".to_string());
     }
-    let path = locate_sidecar()?;
     // Only the official Windows binary has a vetted digest. Do not silently
     // allow an arbitrary executable on macOS/Linux until releases are pinned.
     #[cfg(target_os = "windows")]
-    verify_sidecar(&path, WINDOWS_SIDECAR_SHA256)?;
+    {
+        let path = locate_sidecar()?;
+        verify_sidecar(&path, WINDOWS_SIDECAR_SHA256)?;
+        Ok(path)
+    }
     #[cfg(not(target_os = "windows"))]
-    return Err("Verified Pocket TTS binary is not yet configured for this operating system".to_string());
-    #[cfg(target_os = "windows")]
-    Ok(path)
+    {
+        Err("Verified Pocket TTS binary is not yet configured for this operating system".to_string())
+    }
 }
 
 fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
