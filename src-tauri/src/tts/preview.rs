@@ -57,7 +57,38 @@ impl Drop for TempWave {
     }
 }
 
+/// The official x86-64 binary requires x86-64-v3 (AVX2). Refuse to
+/// launch an unsupported executable instead of crashing with SIGILL.
+fn cpu_compatible() -> bool {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        std::is_x86_feature_detected!("avx2")
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        true
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PocketTtsRuntimeStatus {
+    installed: bool,
+    cpu_compatible: bool,
+}
+
+#[tauri::command]
+pub fn pocket_tts_status() -> PocketTtsRuntimeStatus {
+    PocketTtsRuntimeStatus {
+        installed: binary_path().is_ok(),
+        cpu_compatible: cpu_compatible(),
+    }
+}
+
 fn binary_path() -> Result<PathBuf, String> {
+    if !cpu_compatible() {
+        return Err("This Pocket TTS binary requires AVX2 CPU support".to_string());
+    }
     // Require an explicitly installed sidecar beside the Murmure executable.
     // Never search PATH or invoke a shell when deciding what code to run.
     let binary = if cfg!(windows) {
@@ -293,6 +324,16 @@ mod tests {
         assert!(!acquire_preview(&busy));
         busy.store(false, Ordering::Release);
         assert!(acquire_preview(&busy));
+    }
+
+    #[test]
+    fn runtime_status_is_consistent_with_binary_preflight() {
+        let status = pocket_tts_status();
+        assert_eq!(status.installed, binary_path().is_ok());
+        assert_eq!(status.cpu_compatible, cpu_compatible());
+        if !status.cpu_compatible {
+            assert!(!status.installed);
+        }
     }
 
     #[test]
