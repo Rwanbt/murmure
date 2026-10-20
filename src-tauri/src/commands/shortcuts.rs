@@ -107,12 +107,13 @@ pub fn set_cancel_shortcut(app: AppHandle, binding: String) -> Result<String, St
 fn has_tts_shortcut_conflict(
     registry: &crate::shortcuts::types::ShortcutRegistry,
     keys: &[i32],
+    action: &ShortcutAction,
 ) -> bool {
     !keys.is_empty()
         && registry
             .bindings
             .iter()
-            .any(|binding| binding.action != ShortcutAction::StopTts && binding.keys == keys)
+            .any(|binding| &binding.action != action && binding.keys == keys)
 }
 
 #[command]
@@ -126,7 +127,7 @@ pub fn set_tts_stop_shortcut(app: AppHandle, binding: String) -> Result<String, 
     if !keys.is_empty() {
         let state = app.state::<ShortcutRegistryState>();
         let registry = state.0.read();
-        if has_tts_shortcut_conflict(&registry, &keys) {
+        if has_tts_shortcut_conflict(&registry, &keys, &ShortcutAction::StopTts) {
             return Err("Shortcut is already assigned to another action".to_string());
         }
     }
@@ -146,13 +147,50 @@ mod tts_shortcut_tests {
         let registry = ShortcutRegistry::from_settings(&AppSettings::default());
         assert!(has_tts_shortcut_conflict(
             &registry,
-            &parse_binding_keys("ctrl+space")
+            &parse_binding_keys("ctrl+space"),
+            &ShortcutAction::StopTts
         ));
         assert!(!has_tts_shortcut_conflict(
             &registry,
-            &parse_binding_keys("ctrl+alt+k")
+            &parse_binding_keys("ctrl+alt+k"),
+            &ShortcutAction::StopTts
         ));
-        assert!(!has_tts_shortcut_conflict(&registry, &[]));
+        assert!(!has_tts_shortcut_conflict(&registry, &[], &ShortcutAction::StopTts));
+    }
+}
+
+// ============================================================================
+// Read Selection (Windows UI Automation; no clipboard fallback)
+// ============================================================================
+
+#[command]
+pub fn get_tts_read_selection_shortcut(app: AppHandle) -> Result<String, String> {
+    Ok(settings::load_settings(&app).tts_read_selection_shortcut)
+}
+
+#[command]
+pub fn set_tts_read_selection_shortcut(
+    app: AppHandle,
+    binding: String,
+) -> Result<String, String> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (app, binding);
+        return Err("Read selection is currently supported only on Windows".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let keys = parse_binding_keys(&binding);
+        if !keys.is_empty() {
+            let state = app.state::<ShortcutRegistryState>();
+            let registry = state.0.read();
+            if has_tts_shortcut_conflict(&registry, &keys, &ShortcutAction::ReadSelectedTts) {
+                return Err("Shortcut is already assigned to another action".to_string());
+            }
+        }
+        apply_shortcut(&app, &binding, ShortcutAction::ReadSelectedTts, |s| {
+            &mut s.tts_read_selection_shortcut
+        })
     }
 }
 
