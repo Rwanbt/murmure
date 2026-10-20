@@ -118,6 +118,23 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_never_implicitly_authorize_tts_model_downloads() {
+        let settings = parse_settings(r#"{"language":"fr","sound_volume":50}"#);
+        assert!(!settings.tts_model_download_approved);
+    }
+
+    #[test]
+    fn local_tts_download_approval_can_be_revoked_and_persisted() {
+        let mut settings = AppSettings::default();
+        settings.tts_model_download_approved = true;
+        let serialized = serde_json::to_string(&settings).unwrap();
+        assert!(parse_settings(&serialized).tts_model_download_approved);
+        settings.tts_model_download_approved = false;
+        let revoked = serde_json::to_string(&settings).unwrap();
+        assert!(!parse_settings(&revoked).tts_model_download_approved);
+    }
+
+    #[test]
     fn missing_auto_insert_defaults_to_true() {
         let settings = parse_settings(r#"{"paste_method":"direct"}"#);
 
