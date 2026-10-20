@@ -17,6 +17,7 @@ export const PocketTts = () => {
     const { t } = useTranslation();
     const [state, setState] = useState<PreviewState>('idle');
     const [detail, setDetail] = useState<string | null>(null);
+    const [speechText, setSpeechText] = useState('');
 
     useEffect(() => {
         let cancelled = false;
@@ -41,13 +42,13 @@ export const PocketTts = () => {
         };
     }, [t]);
 
-    const run = async (command: string) => {
+    const run = async (command: string, args?: { text: string }) => {
         try {
             setDetail(null);
             // Guard the UI immediately: the Tauri event is asynchronous and
             // double-clicking must not enqueue two generations.
-            if (command === 'pocket_tts_preview') setState('generating');
-            await invoke(command);
+            if (command === 'pocket_tts_preview' || command === 'pocket_tts_speak') setState('generating');
+            await invoke(command, args);
         } catch (error) {
             setState('error');
             setDetail(String(error));
@@ -86,7 +87,32 @@ export const PocketTts = () => {
                     </p>
                 )}
 
+                <label htmlFor="pocket-tts-text" className="block text-sm font-medium">
+                    {t('Text to read aloud')}
+                </label>
+                <textarea
+                    id="pocket-tts-text"
+                    rows={3}
+                    maxLength={1000}
+                    value={speechText}
+                    onChange={(event) => setSpeechText(event.target.value)}
+                    className="w-full rounded-md border border-border bg-background p-3 text-sm"
+                    data-testid="pocket-tts-text"
+                    placeholder={t('Type a French sentence to read locally…')}
+                />
+                <p className="text-xs text-muted-foreground">
+                    {t('Only text you explicitly submit is synthesized. Code blocks and likely credential lines are omitted.')}
+                </p>
                 <div className="flex flex-wrap gap-3">
+                    <button
+                        type="button"
+                        className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
+                        disabled={busy || !speechText.trim()}
+                        onClick={() => void run('pocket_tts_speak', { text: speechText })}
+                        data-testid="pocket-tts-speak"
+                    >
+                        {t('Read my text')}
+                    </button>
                     <button
                         type="button"
                         className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
@@ -123,7 +149,7 @@ export const PocketTts = () => {
                 </div>
             </section>
             <p className="text-xs text-muted-foreground">
-                {t('Preview only: arbitrary-text TTS and global shortcuts will be enabled after privacy and runtime validation.')}
+                {t('Text-to-speech currently requires explicit input. Selection reading and global shortcuts will follow after runtime validation.')}
             </p>
         </ExtensionPageLayout>
     );
