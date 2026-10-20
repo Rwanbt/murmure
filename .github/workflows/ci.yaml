@@ -72,6 +72,16 @@ jobs:
             - name: Lint
               run: pnpm run lint
 
+    pocket-tts-windows-smoke:
+        name: Pocket TTS official Windows CLI
+        runs-on: windows-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate pinned Kyutai CPU executable and command line
+              shell: pwsh
+              run: |
+                  ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
+
     compile-linux:
         uses: ./.github/workflows/build-linux.yml
         with:
