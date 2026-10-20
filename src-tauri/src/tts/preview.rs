@@ -461,12 +461,24 @@ mod tests {
         );
 
         assert_eq!(apply_player_request(&player, &Request::Pause), PlayerTransition::Paused);
-        assert!(
-            (0..480).any(|_| source.next() == Some(0.0)),
-            "real WAV playback did not pause within 20 ms"
-        );
-        for _ in 0..8 {
-            assert_eq!(source.next(), Some(0.0));
+        // A real WAV may naturally contain isolated zero-valued samples
+        // while Rodio's 5 ms control callback has not yet applied Pause.
+        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz)
+        // within a 20 ms bound. Isolated zero crossings cannot pass.
+        let mut silent_frames = 0;
+        for _ in 0..480 {
+            silent_frames = if source.next() == Some(0.0) {
+                silent_frames + 1
+            } else {
+                0
+            };
+            if silent_frames >= 120 {
+                break;
+            }
+        }
+        assert_eq!(silent_frames, 120, "real WAV playback was not stably silent within 20 ms");
+        for _ in 0..120 {
+            assert_eq!(source.next(), Some(0.0), "paused playback emitted a non-silent sample");
         }
 
         assert_eq!(apply_player_request(&player, &Request::Resume), PlayerTransition::Playing);
@@ -476,10 +488,21 @@ mod tests {
         );
 
         assert_eq!(apply_player_request(&player, &Request::Stop), PlayerTransition::Stopped);
-        assert!(
-            (0..480).any(|_| source.next() == Some(0.0)),
-            "real WAV playback did not stop within 20 ms"
-        );
+        let mut silent_after_stop = 0;
+        for _ in 0..480 {
+            silent_after_stop = if source.next() == Some(0.0) {
+                silent_after_stop + 1
+            } else {
+                0
+            };
+            if silent_after_stop >= 120 {
+                break;
+            }
+        }
+        assert_eq!(silent_after_stop, 120, "real WAV playback was not stably silent within 20 ms of Stop");
+        for _ in 0..120 {
+            assert_eq!(source.next(), Some(0.0), "stopped playback emitted a non-silent sample");
+        }
         assert!(player.empty(), "real WAV player still has queued audio after Stop");
     }
 
