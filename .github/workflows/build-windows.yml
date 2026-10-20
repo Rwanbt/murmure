@@ -79,6 +79,8 @@ jobs:
                   if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut unit tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib shortcuts::registry::tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut registry tests failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows pinned-sidecar installer tests failed' }
 
             - name: Prepare unsigned artifacts
               if: ${{ inputs.dry == false }}
