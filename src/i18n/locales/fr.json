@@ -730,5 +730,11 @@
     "Pocket TTS is not installed in Murmure. Install the official verified Windows runtime explicitly.": "Pocket TTS n’est pas installé dans Murmure. Installez volontairement le moteur Windows officiel vérifié.",
     "Installing verified Pocket TTS…": "Installation de Pocket TTS vérifié…",
     "Install official Pocket TTS for Windows": "Installer Pocket TTS officiel pour Windows",
-    "Installing the runtime downloads one pinned Kyutai executable. French model downloads require separate consent below.": "L’installation du moteur télécharge uniquement un exécutable Kyutai identifié et vérifié. Les modèles français nécessitent une autorisation séparée ci-dessous."
+    "Installing the runtime downloads one pinned Kyutai executable. French model downloads require separate consent below.": "L’installation du moteur télécharge uniquement un exécutable Kyutai identifié et vérifié. Les modèles français nécessitent une autorisation séparée ci-dessous.",
+    "Unable to track Pocket TTS download progress.": "Impossible de suivre la progression du téléchargement Pocket TTS.",
+    "Pocket TTS installation has already finished or has not started.": "L’installation Pocket TTS est déjà terminée ou n’a pas encore commencé.",
+    "Cancelling Pocket TTS installation…": "Annulation de l’installation Pocket TTS…",
+    "Downloading Pocket TTS": "Téléchargement de Pocket TTS",
+    "bytes received": "octets reçus",
+    "Cancel installation": "Annuler l’installation"
 }
