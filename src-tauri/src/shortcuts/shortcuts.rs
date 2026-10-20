@@ -161,6 +161,12 @@ pub fn handle_shortcut_event(
             }
             crate::llm::spawn_transform_selection(app, *index);
         }
+        ShortcutAction::ReadSelectedTts => {
+            if event_type == KeyEventType::Pressed {
+                #[cfg(target_os = "windows")]
+                crate::tts::selection_windows::speak_selection(app);
+            }
+        }
         ShortcutAction::StopTts => {
             if event_type == KeyEventType::Pressed {
                 let _ = crate::tts::preview::pocket_tts_stop(app.clone());
