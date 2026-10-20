@@ -513,6 +513,7 @@ pub fn run() {
             set_sound_volume,
             set_tts_model,
             set_tts_volume,
+            set_tts_model_download_approved,
             set_lower_output_while_recording,
             set_output_volume_while_recording,
             set_record_mode,
