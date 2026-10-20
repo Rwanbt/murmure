@@ -3,6 +3,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
@@ -15,6 +16,10 @@ const MAX_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_EXE_BYTES: u64 = 64 * 1024 * 1024;
 static INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
 static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+// Protect activation/cancellation and the final publish as one coherent
+// ordering, so cancellation cannot be lost between acquiring and reset.
+static INSTALL_CONTROL: Mutex<()> = Mutex::new(());
+static PUBLISHED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,12 +29,12 @@ struct InstallProgress {
 }
 
 pub fn cancel_install() -> bool {
-    if INSTALL_ACTIVE.load(Ordering::Acquire) {
-        CANCEL_REQUESTED.store(true, Ordering::Release);
-        true
-    } else {
-        false
+    let Ok(_guard) = INSTALL_CONTROL.lock() else { return false };
+    if !INSTALL_ACTIVE.load(Ordering::Acquire) || PUBLISHED.load(Ordering::Acquire) {
+        return false;
     }
+    CANCEL_REQUESTED.store(true, Ordering::Release);
+    true
 }
 
 fn check_cancelled() -> Result<(), String> {
@@ -43,17 +48,23 @@ fn check_cancelled() -> Result<(), String> {
 struct ActiveInstall;
 impl ActiveInstall {
     fn acquire() -> Result<Self, String> {
+        let _guard = INSTALL_CONTROL.lock()
+            .map_err(|_| "TTS installer state is unavailable".to_string())?;
         INSTALL_ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| "A Pocket TTS installation is already running".to_string())?;
         CANCEL_REQUESTED.store(false, Ordering::Release);
+        PUBLISHED.store(false, Ordering::Release);
         Ok(Self)
     }
 }
 impl Drop for ActiveInstall {
     fn drop(&mut self) {
-        INSTALL_ACTIVE.store(false, Ordering::Release);
-        CANCEL_REQUESTED.store(false, Ordering::Release);
+        if let Ok(_guard) = INSTALL_CONTROL.lock() {
+            INSTALL_ACTIVE.store(false, Ordering::Release);
+            CANCEL_REQUESTED.store(false, Ordering::Release);
+            PUBLISHED.store(false, Ordering::Release);
+        }
     }
 }
 
@@ -122,6 +133,8 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     super::preview::verify_sidecar(
         &temporary.0, super::preview::WINDOWS_SIDECAR_SHA256,
     )?;
+    let _guard = INSTALL_CONTROL.lock()
+        .map_err(|_| "TTS installer state is unavailable".to_string())?;
     check_cancelled()?;
     // On Windows std::fs::rename may replace an existing destination.
     // An atomic hard link cannot overwrite an existing file or symlink,
@@ -130,6 +143,7 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     // removes the staging name and leaves the published verified binary.
     std::fs::hard_link(&temporary.0, &target)
         .map_err(|_| "Unable to publish Pocket TTS without replacing existing files".to_string())?;
+    PUBLISHED.store(true, Ordering::Release);
     Ok(())
 }
 
