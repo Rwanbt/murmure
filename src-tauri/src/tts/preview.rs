@@ -29,6 +29,7 @@ enum Request {
     Speak(String),
     Pause,
     Resume,
+    TogglePause,
     Stop,
 }
 
@@ -162,6 +163,15 @@ fn apply_player_request(player: &rodio::Player, request: &Request) -> PlayerTran
         Request::Resume => {
             player.play();
             PlayerTransition::Playing
+        }
+        Request::TogglePause => {
+            if player.is_paused() {
+                player.play();
+                PlayerTransition::Playing
+            } else {
+                player.pause();
+                PlayerTransition::Paused
+            }
         }
         Request::Stop => {
             player.stop();
@@ -383,6 +393,11 @@ pub fn pocket_tts_resume(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn pocket_tts_toggle_pause(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::TogglePause)
+}
+
+#[tauri::command]
 pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     super::selection_windows::invalidate_pending_selection();
@@ -392,6 +407,27 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn toggle_pause_switches_state_and_preserves_the_playback_queue() {
+        use std::num::{NonZeroU16, NonZeroU32};
+        use rodio::buffer::SamplesBuffer;
+        let (player, mut output) = rodio::Player::new();
+        player.append(SamplesBuffer::new(
+            NonZeroU16::new(1).unwrap(),
+            NonZeroU32::new(24_000).unwrap(),
+            vec![0.5_f32; 4096],
+        ));
+        assert_eq!(output.next(), Some(0.5));
+        assert_eq!(apply_player_request(&player, &Request::TogglePause), PlayerTransition::Paused);
+        assert!(player.is_paused());
+        assert!((0..480).any(|_| output.next() == Some(0.0)));
+        assert!(!player.empty(), "toggle pause must preserve queued audio");
+        assert_eq!(apply_player_request(&player, &Request::TogglePause), PlayerTransition::Playing);
+        assert!(!player.is_paused());
+        assert!((0..480).any(|_| output.next() == Some(0.5)));
+        assert_eq!(apply_player_request(&player, &Request::Stop), PlayerTransition::Stopped);
+    }
 
     #[test]
     fn actual_audio_queue_obeys_pause_resume_and_stop_without_a_sound_card() {
