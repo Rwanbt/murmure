@@ -49,6 +49,11 @@ impl ShortcutRegistry {
             ShortcutAction::StopTts,
             ActivationMode::PushToTalk,
         );
+        push_if_set(
+            &settings.tts_pause_shortcut,
+            ShortcutAction::TogglePauseTts,
+            ActivationMode::PushToTalk,
+        );
         #[cfg(target_os = "windows")]
         push_if_set(
             &settings.tts_read_selection_shortcut,
@@ -222,6 +227,16 @@ mod tests {
         assert_eq!(read.keys, parse_binding_keys("ctrl+alt+l"));
         assert_eq!(find(&registry, &ShortcutAction::StartRecording).unwrap().keys,
                    parse_binding_keys("ctrl+space"));
+    }
+
+    #[test]
+    fn registers_pause_tts_without_colliding_with_stt_or_stop() {
+        let s = AppSettings::default();
+        let registry = ShortcutRegistry::from_settings(&s);
+        let pause = find(&registry, &ShortcutAction::TogglePauseTts).unwrap();
+        assert_eq!(pause.keys, parse_binding_keys("ctrl+alt+p"));
+        assert_ne!(pause.keys, find(&registry, &ShortcutAction::StopTts).unwrap().keys);
+        assert_ne!(pause.keys, find(&registry, &ShortcutAction::StartRecording).unwrap().keys);
     }
 
     #[test]

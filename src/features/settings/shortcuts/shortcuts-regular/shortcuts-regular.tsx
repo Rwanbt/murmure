@@ -39,6 +39,11 @@ export const ShortcutsRegular = () => {
         resetShortcut: resetTtsStopShortcut,
     } = useShortcut(SHORTCUT_CONFIGS.ttsStop);
     const {
+        shortcut: ttsPauseShortcut,
+        setShortcut: setTtsPauseShortcut,
+        resetShortcut: resetTtsPauseShortcut,
+    } = useShortcut(SHORTCUT_CONFIGS.ttsPause);
+    const {
         shortcut: ttsReadSelectionShortcut,
         setShortcut: setTtsReadSelectionShortcut,
         resetShortcut: resetTtsReadSelectionShortcut,
@@ -100,6 +105,7 @@ export const ShortcutsRegular = () => {
         { id: 'lastTranscript', name: t('Paste last transcript'), value: lastTranscriptShortcut },
         { id: 'cancel', name: t('Cancel recording'), value: cancelShortcut },
         { id: 'ttsStop', name: t('Stop speech playback'), value: ttsStopShortcut },
+        { id: 'ttsPause', name: t('Pause or resume speech'), value: ttsPauseShortcut },
         { id: 'ttsReadSelection', name: t('Read selected text aloud'), value: ttsReadSelectionShortcut },
         { id: 'voiceModeToggle', name: t('Toggle Voice Mode'), value: voiceModeToggleShortcut },
         { id: 'command', name: t('Command, free prompt'), value: commandShortcut },
@@ -187,6 +193,21 @@ export const ShortcutsRegular = () => {
                             resetShortcut={resetTtsStopShortcut}
                             dataTestId="tts-stop-shortcut-button"
                             existingShortcuts={othersOf('ttsStop')}
+                        />
+                    </SettingsUI.Item>
+                    <SettingsUI.Separator />
+                    <SettingsUI.Item>
+                        <SettingsUI.Description className="flex-1 min-w-0">
+                            <Typography.Title>{t('Pause or resume speech')}</Typography.Title>
+                            <Typography.Paragraph>{t('Toggle Pocket TTS pause and resume without changing windows.')}</Typography.Paragraph>
+                        </SettingsUI.Description>
+                        <ShortcutButton
+                            keyName={t('Pause or resume speech')}
+                            shortcut={ttsPauseShortcut}
+                            saveShortcut={setTtsPauseShortcut}
+                            resetShortcut={resetTtsPauseShortcut}
+                            dataTestId="tts-pause-shortcut-button"
+                            existingShortcuts={othersOf('ttsPause')}
                         />
                     </SettingsUI.Item>
                     {isWindows && (

@@ -117,6 +117,26 @@ fn has_tts_shortcut_conflict(
 }
 
 #[command]
+pub fn get_tts_pause_shortcut(app: AppHandle) -> Result<String, String> {
+    Ok(settings::load_settings(&app).tts_pause_shortcut)
+}
+
+#[command]
+pub fn set_tts_pause_shortcut(app: AppHandle, binding: String) -> Result<String, String> {
+    let keys = parse_binding_keys(&binding);
+    if !keys.is_empty() {
+        let state = app.state::<ShortcutRegistryState>();
+        let registry = state.0.read();
+        if has_tts_shortcut_conflict(&registry, &keys, &ShortcutAction::TogglePauseTts) {
+            return Err("Shortcut is already assigned to another action".to_string());
+        }
+    }
+    apply_shortcut(&app, &binding, ShortcutAction::TogglePauseTts, |s| {
+        &mut s.tts_pause_shortcut
+    })
+}
+
+#[command]
 pub fn get_tts_stop_shortcut(app: AppHandle) -> Result<String, String> {
     Ok(settings::load_settings(&app).tts_stop_shortcut)
 }
@@ -156,6 +176,16 @@ mod tts_shortcut_tests {
             &ShortcutAction::StopTts
         ));
         assert!(!has_tts_shortcut_conflict(&registry, &[], &ShortcutAction::StopTts));
+        assert!(has_tts_shortcut_conflict(
+            &registry,
+            &parse_binding_keys("ctrl+alt+k"),
+            &ShortcutAction::TogglePauseTts
+        ));
+        assert!(!has_tts_shortcut_conflict(
+            &registry,
+            &parse_binding_keys("ctrl+alt+p"),
+            &ShortcutAction::TogglePauseTts
+        ));
         #[cfg(target_os = "windows")]
         {
             assert!(has_tts_shortcut_conflict(
