@@ -1039,6 +1039,7 @@ mod tests {
     fn spurious_generate_command_does_not_interrupt_existing_player() {
         use rodio::buffer::SamplesBuffer;
         use std::num::NonZeroU32;
+        use std::num::{NonZeroU16, NonZeroU32};
 
         let (player, mut output) = rodio::Player::new();
         player.append(SamplesBuffer::new(
