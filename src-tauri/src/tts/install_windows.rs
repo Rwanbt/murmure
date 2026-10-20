@@ -239,6 +239,28 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "uses the pinned official Windows release archive from CI"]
+    fn cancelled_install_never_publishes_an_executable() {
+        let archive_path = std::env::var_os("MURMURE_TTS_OFFICIAL_ARCHIVE")
+            .expect("Pinned release fixture is required");
+        let bytes = std::fs::read(archive_path).expect("Unable to read pinned release");
+        let directory = std::env::temp_dir()
+            .join(format!("murmure-cancel-install-{}", uuid::Uuid::new_v4()));
+        let guard = ActiveInstall::acquire().expect("installer must be idle");
+        assert!(cancel_install(), "active installation must accept cancellation");
+        assert!(install_verified_exe(bytes, &directory).is_err(),
+            "cancelled installation unexpectedly succeeded");
+        assert!(!directory.join("pocket-tts.exe").exists(),
+            "cancelled download published an executable");
+        if directory.exists() {
+            let remaining = std::fs::read_dir(&directory).unwrap().count();
+            assert_eq!(remaining, 0, "cancelled install left staging files");
+            std::fs::remove_dir(&directory).unwrap();
+        }
+        drop(guard);
+    }
+
+    #[test]
     fn rejected_archive_never_creates_a_sidecar_or_staging_files() {
         let directory = std::env::temp_dir()
             .join(format!("murmure-tts-invalid-{}", uuid::Uuid::new_v4()));
