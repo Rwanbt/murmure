@@ -71,6 +71,14 @@ fn capture_selection() -> Result<String, String> {
             .and_then(|range| range.GetText((MAX_SELECTED_CHARS + 1) as i32))
             .map_err(|_| "Unable to read selected text")?
             .to_string();
+        // A focus change during the COM call invalidates the user's target.
+        // Never read a stale selection after the foreground app changes.
+        if !focused.CurrentHasKeyboardFocus()
+            .map_err(|_| "Unable to confirm selection focus")?
+            .as_bool()
+        {
+            return Err("Selection focus changed while reading".into());
+        }
         let trimmed = text.trim();
         if trimmed.is_empty() {
             return Err("The selected text is empty".into());
