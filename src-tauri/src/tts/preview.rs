@@ -5,15 +5,18 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française locale de Murmure.";
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
+const MAX_GENERATION: Duration = Duration::from_secs(600);
 
 enum Request {
     Preview,
@@ -24,6 +27,12 @@ enum Request {
 
 pub struct PocketPreviewState {
     tx: Sender<Request>,
+    busy: Arc<AtomicBool>,
+}
+
+fn acquire_preview(busy: &AtomicBool) -> bool {
+    busy.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
 }
 
 #[derive(Clone, Serialize)]
@@ -97,8 +106,14 @@ fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "Unable to start Pocket TTS".to_string())?;
+    let started = Instant::now();
 
     loop {
+        if started.elapsed() >= MAX_GENERATION {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Pocket TTS preview timed out; generation was stopped".to_string());
+        }
         match child.try_wait() {
             Ok(Some(status)) if !status.success() => {
                 return Err("Pocket TTS generation failed".into());
@@ -167,7 +182,11 @@ fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
 
 pub fn init(app: &AppHandle) {
     let (tx, rx) = mpsc::channel();
-    app.manage(PocketPreviewState { tx });
+    let busy = Arc::new(AtomicBool::new(false));
+    app.manage(PocketPreviewState {
+        tx,
+        busy: Arc::clone(&busy),
+    });
     let handle = app.clone();
     thread::spawn(move || {
         while let Ok(request) = rx.recv() {
@@ -175,16 +194,25 @@ pub fn init(app: &AppHandle) {
                 if let Err(detail) = run_preview(&handle, &rx) {
                     emit(&handle, "error", Some(detail));
                 }
+                busy.store(false, Ordering::Release);
             }
         }
     });
 }
 
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
-    app.state::<PocketPreviewState>()
-        .tx
-        .send(action)
-        .map_err(|_| "Pocket TTS preview worker is unavailable".to_string())
+    let state = app.state::<PocketPreviewState>();
+    let is_preview = matches!(action, Request::Preview);
+    if is_preview && !acquire_preview(&state.busy) {
+        return Err("Pocket TTS preview is already active".to_string());
+    }
+    if state.tx.send(action).is_err() {
+        if is_preview {
+            state.busy.store(false, Ordering::Release);
+        }
+        return Err("Pocket TTS preview worker is unavailable".to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -210,6 +238,15 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_preview_is_rejected_until_the_first_finishes() {
+        let busy = AtomicBool::new(false);
+        assert!(acquire_preview(&busy));
+        assert!(!acquire_preview(&busy));
+        busy.store(false, Ordering::Release);
+        assert!(acquire_preview(&busy));
+    }
 
     #[test]
     fn preview_is_french_cpu_only_with_no_runtime_user_text() {
