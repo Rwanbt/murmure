@@ -186,7 +186,8 @@ export const PocketTts = () => {
                         <input
                             type="checkbox"
                             checked={downloadApproved}
-                            disabled={busy || consentBusy}
+                            // Revocation must remain accessible during playback.
+                            disabled={consentBusy}
                             onChange={(event) => void changeDownloadApproval(event.target.checked)}
                             data-testid="pocket-tts-download-approval"
                             className="mt-1"
