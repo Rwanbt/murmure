@@ -49,6 +49,11 @@ impl ShortcutRegistry {
             ShortcutAction::StopTts,
             ActivationMode::PushToTalk,
         );
+        push_if_set(
+            &settings.tts_pause_shortcut,
+            ShortcutAction::TogglePauseTts,
+            ActivationMode::PushToTalk,
+        );
         #[cfg(target_os = "windows")]
         push_if_set(
             &settings.tts_read_selection_shortcut,
