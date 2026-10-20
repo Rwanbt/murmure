@@ -17,6 +17,7 @@ pub enum ShortcutAction {
     TransformSelectionLlmMode(usize),
     CancelRecording,
     StopTts,
+    TogglePauseTts,
     ReadSelectedTts,
     ToggleVoiceMode,
 }
