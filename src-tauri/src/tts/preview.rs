@@ -436,6 +436,76 @@ mod tests {
         assert!(player.empty(), "Stop did not empty the playback queue");
     }
 
+    /// Runs only in the dedicated Windows job after the pinned Kyutai
+    /// binary has generated a French WAV. Not part of ordinary unit tests:
+    /// the fixture is not checked in, and no personal voice is required.
+    #[test]
+    #[ignore = "requires a real generated French WAV from the pinned Kyutai Windows CLI"]
+    fn official_french_wav_decodes_and_obeys_transport() {
+        use rodio::Source;
+
+        let path = std::env::var_os("MURMURE_TTS_FIXTURE_WAV")
+            .expect("MURMURE_TTS_FIXTURE_WAV must point to a generated French WAV");
+        let file = File::open(path).expect("cannot read the official French WAV fixture");
+        let decoder = rodio::Decoder::new(file).expect("Rodio could not decode the official WAV");
+        assert_eq!(decoder.channels().get(), 1);
+        assert_eq!(decoder.sample_rate().get(), 24_000);
+
+        let (player, mut source) = rodio::Player::new();
+        player.append(decoder);
+
+        // Inspect the actual decoded sample stream (not just the RIFF header).
+        assert!(
+            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
+            "no audible signal detected in the first second of the French WAV"
+        );
+
+        assert_eq!(apply_player_request(&player, &Request::Pause), PlayerTransition::Paused);
+        // A real WAV may naturally contain isolated zero-valued samples
+        // while Rodio's 5 ms control callback has not yet applied Pause.
+        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz)
+        // within a 20 ms bound. Isolated zero crossings cannot pass.
+        let mut silent_frames = 0;
+        for _ in 0..480 {
+            silent_frames = if source.next() == Some(0.0) {
+                silent_frames + 1
+            } else {
+                0
+            };
+            if silent_frames >= 120 {
+                break;
+            }
+        }
+        assert_eq!(silent_frames, 120, "real WAV playback was not stably silent within 20 ms");
+        for _ in 0..120 {
+            assert_eq!(source.next(), Some(0.0), "paused playback emitted a non-silent sample");
+        }
+
+        assert_eq!(apply_player_request(&player, &Request::Resume), PlayerTransition::Playing);
+        assert!(
+            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
+            "Rodio did not resume the real French WAV within one second"
+        );
+
+        assert_eq!(apply_player_request(&player, &Request::Stop), PlayerTransition::Stopped);
+        let mut silent_after_stop = 0;
+        for _ in 0..480 {
+            silent_after_stop = if source.next() == Some(0.0) {
+                silent_after_stop + 1
+            } else {
+                0
+            };
+            if silent_after_stop >= 120 {
+                break;
+            }
+        }
+        assert_eq!(silent_after_stop, 120, "real WAV playback was not stably silent within 20 ms of Stop");
+        for _ in 0..120 {
+            assert_eq!(source.next(), Some(0.0), "stopped playback emitted a non-silent sample");
+        }
+        assert!(player.empty(), "real WAV player still has queued audio after Stop");
+    }
+
     #[test]
     fn spurious_generate_command_does_not_interrupt_existing_player() {
         use std::num::{NonZeroU16, NonZeroU32};

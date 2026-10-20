@@ -9,7 +9,8 @@
 param(
     [Parameter(Mandatory=$true)]
     [string] $Destination,
-    [switch] $GenerateFrench
+    [switch] $GenerateFrench,
+    [switch] $KeepGeneratedWav
 )
 
 $ErrorActionPreference = 'Stop'
@@ -135,7 +136,9 @@ if ($GenerateFrench) {
     } finally {
         $reader.Dispose()
         $stream.Dispose()
-        Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+        if (-not $KeepGeneratedWav) {
+            Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
