@@ -167,6 +167,11 @@ pub fn handle_shortcut_event(
                 crate::tts::selection_windows::speak_selection(app);
             }
         }
+        ShortcutAction::TogglePauseTts => {
+            if event_type == KeyEventType::Pressed {
+                let _ = crate::tts::preview::pocket_tts_toggle_pause(app.clone());
+            }
+        }
         ShortcutAction::StopTts => {
             if event_type == KeyEventType::Pressed {
                 let _ = crate::tts::preview::pocket_tts_stop(app.clone());
