@@ -258,9 +258,23 @@ pub fn init(app: &AppHandle) {
     });
 }
 
+fn require_tts_approval(approved: bool) -> Result<(), String> {
+    if approved {
+        Ok(())
+    } else {
+        Err("Enable Pocket TTS model downloads explicitly in Extensions before reading".to_string())
+    }
+}
+
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
-    let state = app.state::<PocketPreviewState>();
     let is_preview = matches!(&action, Request::Preview | Request::Speak(_));
+    if is_preview {
+        // This also covers reading selections via a global hotkey. Never
+        // start a child process that could fetch model files without opt-in.
+        let settings = crate::settings::load_settings(app);
+        require_tts_approval(settings.tts_model_download_approved)?;
+    }
+    let state = app.state::<PocketPreviewState>();
     if is_preview && !acquire_preview(&state.busy) {
         return Err("Pocket TTS is already active".to_string());
     }
@@ -318,6 +332,12 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_download_opt_in_is_required_before_any_generation() {
+        assert!(require_tts_approval(false).is_err());
+        assert!(require_tts_approval(true).is_ok());
+    }
 
     #[test]
     fn a_second_preview_is_rejected_until_the_first_finishes() {
