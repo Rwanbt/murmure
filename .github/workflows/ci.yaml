@@ -235,6 +235,51 @@ jobs:
               shell: pwsh
               run: ./scripts/validate-packaged-windows.ps1
 
+    # The real French WAV is decoded and driven through the production Rodio
+    # transport, so the playback contract is proven on real audio and not only
+    # on an in-memory fixture.
+    pocket-tts-real-wav-rodio:
+        name: Pocket TTS real French WAV decoded by Rodio
+        runs-on: windows-latest
+        timeout-minutes: 40
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+            - uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7
+            - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+              with:
+                  workspaces: './src-tauri -> target'
+            - name: Build required local frontend resources
+              shell: pwsh
+              run: |
+                  npm install -g pnpm@10.19.0 --ignore-scripts
+                  if ($LASTEXITCODE -ne 0) { throw 'pnpm installation failed' }
+                  pnpm install --ignore-scripts
+                  if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency installation failed' }
+                  pnpm build:smartmic
+                  if ($LASTEXITCODE -ne 0) { throw 'SmartMic build failed' }
+            - name: Decode official generated French WAV and test Rodio controls
+              shell: pwsh
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: |
+                  $destination = Join-Path $env:RUNNER_TEMP 'murmure-rodio-wav'
+                  $wav = Join-Path $destination 'french-smoke.wav'
+                  try {
+                      ./scripts/verify-pocket-tts-windows.ps1 -Destination $destination -GenerateFrench -KeepGeneratedWav
+                      if (-not (Test-Path -LiteralPath $wav)) { throw 'Generated French WAV missing' }
+                      $env:MURMURE_TTS_FIXTURE_WAV = $wav
+                      cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests::official_french_wav_decodes_and_obeys_transport -- --exact --ignored --nocapture
+                      if ($LASTEXITCODE -ne 0) { throw 'Official French WAV Rodio transport contract failed' }
+                  } finally {
+                      Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_TTS_FIXTURE_WAV -ErrorAction SilentlyContinue
+                  }
+
     compile-linux:
         uses: ./.github/workflows/build-linux.yml
         with:
