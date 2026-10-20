@@ -74,6 +74,22 @@ export const PocketTts = () => {
         };
     }, [t]);
 
+    useEffect(() => {
+        let active = true;
+        let unlisten: (() => void) | undefined;
+        void listen<string>('pocket-tts-selection-error', ({ payload }) => {
+            if (!active) return;
+            setState('error');
+            setDetail(payload);
+        }).then((fn) => {
+            if (active) unlisten = fn;
+            else fn();
+        }).catch(() => {
+            if (active) setDetail(t('Unable to subscribe to selection errors.'));
+        });
+        return () => { active = false; unlisten?.(); };
+    }, [t]);
+
     const run = async (command: string, args?: { text: string }) => {
         try {
             setDetail(null);
