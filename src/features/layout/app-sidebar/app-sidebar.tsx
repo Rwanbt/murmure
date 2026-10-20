@@ -17,6 +17,7 @@ import {
     Smartphone,
     Zap,
     Plug,
+    Volume2,
 } from 'lucide-react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
@@ -83,6 +84,12 @@ const getExtensionsSubItems = (t: (key: string) => string) => [
         url: '/extensions/smart-mic',
         icon: Smartphone,
         dataTestId: 'smart-mic-tab',
+    },
+    {
+        name: t('Text to Speech'),
+        url: '/extensions/pocket-tts',
+        icon: Volume2,
+        dataTestId: 'pocket-tts-tab',
     },
     {
         name: t('Local API'),
