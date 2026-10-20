@@ -25,15 +25,18 @@ export const PocketTts = () => {
     const [speechText, setSpeechText] = useState('');
     const [model, setModel] = useState('french');
     const [volume, setVolume] = useState(80);
+    const [downloadApproved, setDownloadApproved] = useState(false);
+    const [consentBusy, setConsentBusy] = useState(false);
     const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
 
     useEffect(() => {
         let active = true;
-        void invoke<{ tts_model: string; tts_volume: number }>('get_all_settings')
+        void invoke<{ tts_model: string; tts_volume: number; tts_model_download_approved: boolean }>('get_all_settings')
             .then((settings) => {
                 if (!active) return;
                 setModel(settings.tts_model === 'french_24l' ? 'french_24l' : 'french');
                 setVolume(Math.max(0, Math.min(100, settings.tts_volume)));
+                setDownloadApproved(settings.tts_model_download_approved === true);
             })
             .catch(() => {
                 if (active) setDetail(t('Unable to load TTS settings.'));
@@ -121,6 +124,18 @@ export const PocketTts = () => {
         }
     };
 
+    const changeDownloadApproval = async (approved: boolean) => {
+        setConsentBusy(true);
+        try {
+            await invoke('set_tts_model_download_approved', { approved });
+            setDownloadApproved(approved);
+        } catch (error) {
+            setDetail(String(error));
+        } finally {
+            setConsentBusy(false);
+        }
+    };
+
     const busy = state === 'generating' || state === 'playing' || state === 'paused';
 
     return (
@@ -166,6 +181,26 @@ export const PocketTts = () => {
                     </p>
                 )}
 
+                <div className="space-y-2">
+                    <label className="flex items-start gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={downloadApproved}
+                            disabled={busy || consentBusy}
+                            onChange={(event) => void changeDownloadApproval(event.target.checked)}
+                            data-testid="pocket-tts-download-approval"
+                            className="mt-1"
+                        />
+                        <span>{t('I authorize Pocket TTS to download its French model and voice files when I request speech. This permission stays on this device only.')}</span>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                        <a className="underline" href="https://huggingface.co/kyutai/pocket-tts-without-voice-cloning" target="_blank" rel="noopener noreferrer">
+                            {t('Kyutai French model — CC BY 4.0')}
+                        </a>
+                        {' · '}
+                        {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
+                    </p>
+                </div>
                 <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
                     {t('French speech model')}
                 </label>
@@ -220,7 +255,7 @@ export const PocketTts = () => {
                     <button
                         type="button"
                         className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
-                        disabled={busy || !speechText.trim() || runtimeStatus?.installed !== true}
+                        disabled={busy || consentBusy || !downloadApproved || !speechText.trim() || runtimeStatus?.installed !== true}
                         onClick={() => void run('pocket_tts_speak', { text: speechText })}
                         data-testid="pocket-tts-speak"
                     >
@@ -229,7 +264,7 @@ export const PocketTts = () => {
                     <button
                         type="button"
                         className="rounded-md bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
-                        disabled={busy || runtimeStatus?.installed !== true}
+                        disabled={busy || consentBusy || !downloadApproved || runtimeStatus?.installed !== true}
                         onClick={() => void run('pocket_tts_preview')}
                         data-testid="pocket-tts-play"
                     >
