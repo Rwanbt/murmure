@@ -404,6 +404,30 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove only Murmure's isolated Pocket TTS cache, never the user's shared HF cache.
+#[tauri::command]
+pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
+    let _guard = MODEL_APPROVAL_LOCK.lock()
+        .map_err(|_| "TTS model cache state is unavailable".to_string())?;
+    if app.state::<PocketPreviewState>().busy.load(Ordering::Acquire) {
+        return Err("Stop Pocket TTS playback before clearing its model cache".into());
+    }
+    let parent = app.path().app_cache_dir()
+        .map_err(|_| "Unable to locate Murmure's model cache".to_string())?;
+    let cache = parent.join("pocket-tts");
+    let meta = match std::fs::symlink_metadata(&cache) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("Unable to inspect the Pocket TTS model cache".into()),
+    };
+    if !meta.file_type().is_dir() || meta.file_type().is_symlink() {
+        return Err("Pocket TTS model cache is not a regular directory".into());
+    }
+    std::fs::remove_dir_all(&cache)
+        .map_err(|_| "Unable to clear the Pocket TTS model cache".to_string())?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub fn pocket_tts_preview(app: AppHandle) -> Result<(), String> {
     send(&app, Request::Preview)
