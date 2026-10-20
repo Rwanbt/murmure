@@ -27,6 +27,13 @@ const applySettings = async (categories: ExportedCategories): Promise<void> => {
     if (settings.sound_volume != null) {
         await invoke('set_sound_volume', { percent: settings.sound_volume });
     }
+    // Older .murmure files have no TTS fields. Preserve current preferences.
+    if (settings.tts_model != null) {
+        await invoke('set_tts_model', { model: settings.tts_model });
+    }
+    if (settings.tts_volume != null) {
+        await invoke('set_tts_volume', { percent: settings.tts_volume });
+    }
     if (settings.lower_output_while_recording != null) {
         await invoke('set_lower_output_while_recording', { enabled: settings.lower_output_while_recording });
     }
@@ -124,6 +131,9 @@ const applyShortcuts = async (categories: ExportedCategories): Promise<void> => 
         await invoke('set_llm_transform_shortcut', { index: 3, binding: shortcuts.llm_transform_4_shortcut });
     }
     await invoke('set_cancel_shortcut', { binding: shortcuts.cancel_shortcut });
+    if (shortcuts.tts_stop_shortcut != null) {
+        await invoke('set_tts_stop_shortcut', { binding: shortcuts.tts_stop_shortcut });
+    }
 };
 
 const applyFormattingRules = async (categories: ExportedCategories, strategy: ImportStrategy): Promise<void> => {

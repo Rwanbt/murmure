@@ -68,6 +68,8 @@ jobs:
                   cargo test --manifest-path src-tauri/Cargo.toml --lib tts::
                   cargo test --manifest-path src-tauri/Cargo.toml --lib commands::settings::pocket_tts_settings_tests
                   cargo test --manifest-path src-tauri/Cargo.toml --lib settings::settings::tests
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib commands::shortcuts::tts_shortcut_tests
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib shortcuts::registry::tests
 
             - name: Lint
               run: pnpm run lint

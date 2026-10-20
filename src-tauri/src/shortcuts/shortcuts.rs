@@ -161,6 +161,11 @@ pub fn handle_shortcut_event(
             }
             crate::llm::spawn_transform_selection(app, *index);
         }
+        ShortcutAction::StopTts => {
+            if event_type == KeyEventType::Pressed {
+                let _ = crate::tts::preview::pocket_tts_stop(app.clone());
+            }
+        }
         ShortcutAction::CancelRecording => {
             if event_type == KeyEventType::Pressed && !is_recording_idle() {
                 force_cancel_recording(app);

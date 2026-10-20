@@ -98,6 +98,26 @@ mod tests {
     }
 
     #[test]
+    fn legacy_settings_preserve_default_tts_stop_hotkey() {
+        let settings = parse_settings(r#"{"record_shortcut":"ctrl+space"}"#);
+        assert_eq!(settings.tts_stop_shortcut, "ctrl+alt+k");
+        assert_eq!(settings.record_shortcut, "ctrl+space");
+    }
+
+    #[test]
+    fn tts_stop_hotkey_survives_settings_round_trip_and_can_be_disabled() {
+        let mut settings = AppSettings::default();
+        settings.tts_stop_shortcut = "ctrl+shift+q".to_string();
+        let json = serde_json::to_string(&settings).unwrap();
+        let restored = parse_settings(&json);
+        assert_eq!(restored.tts_stop_shortcut, "ctrl+shift+q");
+
+        settings.tts_stop_shortcut.clear();
+        let disabled = parse_settings(&serde_json::to_string(&settings).unwrap());
+        assert!(disabled.tts_stop_shortcut.is_empty());
+    }
+
+    #[test]
     fn missing_auto_insert_defaults_to_true() {
         let settings = parse_settings(r#"{"paste_method":"direct"}"#);
 

@@ -119,6 +119,11 @@ export const SHORTCUT_CONFIGS = {
         getCommand: 'get_cancel_shortcut',
         setCommand: 'set_cancel_shortcut',
     },
+    ttsStop: {
+        defaultShortcut: 'ctrl+alt+k',
+        getCommand: 'get_tts_stop_shortcut',
+        setCommand: 'set_tts_stop_shortcut',
+    },
     voiceModeToggle: {
         defaultShortcut: 'ctrl+shift+0',
         getCommand: 'get_voice_mode_toggle_shortcut',
