@@ -145,7 +145,10 @@ export const PocketTts = () => {
                     max={100}
                     step={5}
                     value={volume}
-                    onChange={(event) => void updateVolume(Number(event.target.value))}
+                    onChange={(event) => setVolume(Number(event.target.value))}
+                    onPointerUp={(event) => void updateVolume(Number(event.currentTarget.value))}
+                    onKeyUp={(event) => void updateVolume(Number(event.currentTarget.value))}
+                    onBlur={(event) => void updateVolume(Number(event.currentTarget.value))}
                     className="w-full"
                     data-testid="pocket-tts-volume"
                 />
