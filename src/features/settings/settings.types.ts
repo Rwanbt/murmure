@@ -11,6 +11,8 @@ export interface SystemSettings {
     language: string;
     sound_enabled: boolean;
     sound_volume: number;
+    tts_model: string;
+    tts_volume: number;
     lower_output_while_recording: boolean;
     output_volume_while_recording: number;
     log_level: string;
@@ -42,6 +44,7 @@ export interface ShortcutSettings {
     llm_transform_4_shortcut: string;
     voice_mode_toggle_shortcut: string;
     cancel_shortcut: string;
+    tts_stop_shortcut: string;
 }
 
 export interface VoiceModeSettings {
