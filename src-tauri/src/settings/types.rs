@@ -54,6 +54,7 @@ pub struct AppSettings {
     pub sound_volume: u8,
     pub tts_model: String, // "french" | "french_24l" (allowlisted)
     pub tts_volume: u8, // 0..100; applied to the next playback
+    pub tts_model_download_approved: bool, // explicit local approval, never migrated from exports
     pub lower_output_while_recording: bool,
     pub output_volume_while_recording: u8,
     pub onboarding: OnboardingState,
@@ -173,6 +174,7 @@ impl Default for AppSettings {
             sound_volume: 50,
             tts_model: "french".to_string(),
             tts_volume: 80,
+            tts_model_download_approved: false,
             lower_output_while_recording: false,
             output_volume_while_recording: 50,
             onboarding: OnboardingState::default(),

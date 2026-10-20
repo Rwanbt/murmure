@@ -17,6 +17,7 @@ export type ExportedSystemSettings = Omit<
     | 'wayland_clipboard_fallback_dismissed'
     | 'keep_recordings'
     | 'remove_hesitations'
+    | 'tts_model_download_approved'
 >;
 
 export interface MurmureExportData {

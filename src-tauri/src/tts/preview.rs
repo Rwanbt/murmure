@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -19,6 +19,10 @@ const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française local
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
+
+// Serialize model-consent revocation against queuing new requests. The worker
+// remains independent: never hold this lock while generating or playing audio.
+pub(crate) static MODEL_APPROVAL_LOCK: Mutex<()> = Mutex::new(());
 
 enum Request {
     Preview,
@@ -126,7 +130,22 @@ fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
     .into()
 }
 
+fn configure_model_source(command: &mut Command, cache_dir: &Path) {
+    // Isolate Murmure's model cache from system-wide Hugging Face credentials.
+    // Do not inherit a personal token or an alternative untrusted model host.
+    command.env("HF_HOME", cache_dir)
+        .env("HF_ENDPOINT", "https://huggingface.co")
+        .env_remove("HF_TOKEN")
+        .env_remove("HF_TOKEN_PATH")
+        .env_remove("HUGGING_FACE_HUB_TOKEN")
+        .env_remove("HUGGINGFACE_HUB_CACHE")
+        .env_remove("HF_HUB_CACHE");
+}
+
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
+    // A request may have been queued before consent was revoked. Check again
+    // in the worker before starting the external model process.
+    require_tts_approval(crate::settings::load_settings(app).tts_model_download_approved)?;
     let binary = binary_path()?;
     let wave = TempWave(std::env::temp_dir().join(format!(
         "murmure-pocket-preview-{}.wav",
@@ -139,8 +158,17 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     } else {
         "french"
     };
+    // The first, user-approved invocation may download the public model.
+    // Restrict the CLI to a dedicated app cache with no inherited HF login.
+    let cache_dir = app.path().app_cache_dir()
+        .map_err(|_| "Unable to locate Murmure's model cache".to_string())?
+        .join("pocket-tts");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|_| "Unable to create the local TTS model cache".to_string())?;
+    let mut command = Command::new(binary);
+    configure_model_source(&mut command, &cache_dir);
     emit(app, "generating", None);
-    let mut child = Command::new(binary)
+    let mut child = command
         .args(preview_args(&wave.0, model))
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -258,9 +286,30 @@ pub fn init(app: &AppHandle) {
     });
 }
 
+fn require_tts_approval(approved: bool) -> Result<(), String> {
+    if approved {
+        Ok(())
+    } else {
+        Err("Enable Pocket TTS model downloads explicitly in Extensions before reading".to_string())
+    }
+}
+
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
-    let state = app.state::<PocketPreviewState>();
     let is_preview = matches!(&action, Request::Preview | Request::Speak(_));
+    // Gate selection and synthesis dispatch atomically with permission changes.
+    let _approval_guard = if is_preview {
+        Some(MODEL_APPROVAL_LOCK.lock()
+            .map_err(|_| "TTS approval state is unavailable".to_string())?)
+    } else {
+        None
+    };
+    if is_preview {
+        // This also covers reading selections via a global hotkey. Never
+        // start a child process that could fetch model files without opt-in.
+        let settings = crate::settings::load_settings(app);
+        require_tts_approval(settings.tts_model_download_approved)?;
+    }
+    let state = app.state::<PocketPreviewState>();
     if is_preview && !acquire_preview(&state.busy) {
         return Err("Pocket TTS is already active".to_string());
     }
@@ -318,6 +367,29 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_source_does_not_inherit_user_huggingface_credentials() {
+        let mut command = Command::new("pocket-tts");
+        configure_model_source(&mut command, Path::new("isolated-cache"));
+        let entries: std::collections::HashMap<_, _> = command.get_envs()
+            .map(|(name, value)| (name.to_string_lossy().into_owned(),
+                                    value.map(|v| v.to_string_lossy().into_owned())))
+            .collect();
+        assert_eq!(entries.get("HF_TOKEN"), Some(&None));
+        assert_eq!(entries.get("HF_TOKEN_PATH"), Some(&None));
+        assert_eq!(entries.get("HUGGINGFACE_HUB_CACHE"), Some(&None));
+        assert_eq!(entries.get("HF_ENDPOINT"),
+                   Some(&Some("https://huggingface.co".to_string())));
+        assert_eq!(entries.get("HF_HOME"),
+                   Some(&Some("isolated-cache".to_string())));
+    }
+
+    #[test]
+    fn model_download_opt_in_is_required_before_any_generation() {
+        assert!(require_tts_approval(false).is_err());
+        assert!(require_tts_approval(true).is_ok());
+    }
 
     #[test]
     fn a_second_preview_is_rejected_until_the_first_finishes() {

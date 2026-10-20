@@ -13,6 +13,7 @@ export interface SystemSettings {
     sound_volume: number;
     tts_model: string;
     tts_volume: number;
+    tts_model_download_approved: boolean;
     lower_output_while_recording: boolean;
     output_volume_while_recording: number;
     log_level: string;

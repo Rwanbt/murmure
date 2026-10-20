@@ -91,6 +91,29 @@ pub fn set_tts_model(app: AppHandle, model: String) -> Result<(), String> {
     crate::settings::save_settings(&app, &settings)
 }
 
+/// Explicit per-installation consent for model/voice downloads.
+/// Importing a .murmure backup never sets this permission.
+#[command]
+pub fn set_tts_model_download_approved(app: AppHandle, approved: bool) -> Result<(), String> {
+    // Serializes this update with all Pocket TTS requests, including global
+    // selection shortcuts. Release the lock BEFORE calling Stop, which also
+    // invalidates pending UI Automation reads (opposite lock order).
+    {
+        let _guard = crate::tts::preview::MODEL_APPROVAL_LOCK
+            .lock()
+            .map_err(|_| "TTS approval state is unavailable".to_string())?;
+        let mut settings = crate::settings::load_settings(&app);
+        settings.tts_model_download_approved = approved;
+        crate::settings::save_settings(&app, &settings)?;
+    }
+    if !approved {
+        // Revocation also terminates an already active generation/playback.
+        // A queued request will recheck the persisted approval before launch.
+        crate::tts::preview::pocket_tts_stop(app)?;
+    }
+    Ok(())
+}
+
 #[command]
 pub fn set_tts_volume(app: AppHandle, percent: u8) -> Result<(), String> {
     let mut settings = crate::settings::load_settings(&app);

@@ -721,5 +721,8 @@
     "Stop Pocket TTS playback or generation immediately.": "Arrête immédiatement la lecture ou la génération Pocket TTS.",
     "Read selected text aloud": "Lire la sélection à voix haute",
     "Read the focused text selection using Windows Accessibility without changing the clipboard.": "Lit la sélection du contrôle actif via l’accessibilité Windows, sans modifier le presse-papiers.",
-    "Unable to subscribe to selection errors.": "Impossible de suivre les erreurs de lecture de sélection."
+    "Unable to subscribe to selection errors.": "Impossible de suivre les erreurs de lecture de sélection.",
+    "I authorize Pocket TTS to download its French model and voice files when I request speech. This permission stays on this device only.": "J’autorise Pocket TTS à télécharger les fichiers du modèle et de la voix française quand je demande une lecture. Cette autorisation reste sur cet appareil.",
+    "Kyutai French model — CC BY 4.0": "Modèle français Kyutai — CC BY 4.0",
+    "Turning this off blocks future playback; it does not delete files already cached locally.": "Désactiver cette option bloque les prochaines lectures, sans supprimer les fichiers déjà présents dans le cache local."
 }
