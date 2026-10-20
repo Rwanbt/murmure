@@ -113,7 +113,9 @@ mod tests {
         let persisted = parse_settings(&serde_json::to_string(&custom).unwrap());
         assert_eq!(persisted.tts_pause_shortcut, "ctrl+shift+p");
         custom.tts_pause_shortcut.clear();
-        assert!(parse_settings(&serde_json::to_string(&custom).unwrap()).tts_pause_shortcut.is_empty());
+        assert!(parse_settings(&serde_json::to_string(&custom).unwrap())
+            .tts_pause_shortcut
+            .is_empty());
     }
 
     #[test]

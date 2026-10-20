@@ -728,7 +728,6 @@
     "I authorize Pocket TTS to download its French model and voice files when I request speech. This permission stays on this device only.": "J’autorise Pocket TTS à télécharger les fichiers du modèle et de la voix française quand je demande une lecture. Cette autorisation reste sur cet appareil.",
     "Kyutai French model — CC BY 4.0": "Modèle français Kyutai — CC BY 4.0",
     "Turning this off blocks future playback; it does not delete files already cached locally.": "Désactiver cette option bloque les prochaines lectures, sans supprimer les fichiers déjà présents dans le cache local.",
-<<<<<<< HEAD
     "Pocket TTS executable is present but does not match a verified Kyutai release for this system. Speech is disabled.": "L’exécutable Pocket TTS est présent, mais ne correspond pas à une version Kyutai vérifiée pour ce système. La lecture vocale est désactivée.",
     "Pocket TTS installed but its integrity check did not pass.": "Pocket TTS a été installé, mais le contrôle d’intégrité a échoué.",
     "Pocket TTS is not installed in Murmure. Install the official verified Windows runtime explicitly.": "Pocket TTS n’est pas installé dans Murmure. Installez volontairement le moteur Windows officiel vérifié.",
