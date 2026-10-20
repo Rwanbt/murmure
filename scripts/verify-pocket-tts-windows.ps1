@@ -41,6 +41,8 @@ Expand-Archive -LiteralPath $zip -DestinationPath $expanded
 $binaries = @(Get-ChildItem -Path $expanded -Recurse -File -Filter 'pocket-tts.exe')
 if ($binaries.Count -ne 1) { throw "Expected one Pocket TTS executable, found $($binaries.Count)" }
 $binary = $binaries[0].FullName
+$binarySha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Output "Official verified extracted Pocket TTS executable SHA256: $binarySha256"
 
 # Always validate the command line without using speech/model assets.
 # Actual synthesis runs only when -GenerateFrench is explicitly passed.
