@@ -76,6 +76,42 @@ pub fn set_sound_volume(app: AppHandle, percent: u8) -> Result<(), String> {
     crate::settings::save_settings(&app, &s)
 }
 
+/// The Pocket TTS engine accepts a finite catalog of local French models.
+fn supported_tts_model(model: &str) -> bool {
+    matches!(model, "french" | "french_24l")
+}
+
+#[command]
+pub fn set_tts_model(app: AppHandle, model: String) -> Result<(), String> {
+    if !supported_tts_model(&model) {
+        return Err("Unsupported Pocket TTS model".to_string());
+    }
+    let mut settings = crate::settings::load_settings(&app);
+    settings.tts_model = model;
+    crate::settings::save_settings(&app, &settings)
+}
+
+#[command]
+pub fn set_tts_volume(app: AppHandle, percent: u8) -> Result<(), String> {
+    let mut settings = crate::settings::load_settings(&app);
+    settings.tts_volume = percent.min(100);
+    crate::settings::save_settings(&app, &settings)
+}
+
+#[cfg(test)]
+mod pocket_tts_settings_tests {
+    use super::*;
+
+    #[test]
+    fn only_supported_local_models_are_allowed() {
+        assert!(supported_tts_model("french"));
+        assert!(supported_tts_model("french_24l"));
+        assert!(!supported_tts_model("https://example.org/weights"));
+        assert!(!supported_tts_model("english"));
+        assert!(!supported_tts_model(""));
+    }
+}
+
 #[command]
 pub fn set_lower_output_while_recording(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut s = crate::settings::load_settings(&app);
