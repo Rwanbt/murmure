@@ -114,10 +114,15 @@ fn capture_selection() -> Result<String, String> {
 }
 
 pub fn speak_selection(app: &AppHandle) {
-    if READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
-        return;
-    }
-    let captured = *SELECTION_GENERATION.lock();
+    // Establish the capture generation and active flag atomically with
+    // respect to Stop, so a Stop cannot interleave between those operations.
+    let captured = {
+        let generation = SELECTION_GENERATION.lock();
+        if READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+            return;
+        }
+        *generation
+    };
     let app = app.clone();
     std::thread::spawn(move || {
         let _guard = ReadGuard;
