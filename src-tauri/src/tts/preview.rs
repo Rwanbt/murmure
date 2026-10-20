@@ -1,0 +1,223 @@
+//! Explicit CPU-only French voice preview using the standalone Kyutai binary.
+//! No user text is placed in process arguments in this first integration.
+//! Future arbitrary-text synthesis MUST use a different privacy-safe transport.
+
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::thread;
+use std::time::Duration;
+
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager};
+
+const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française locale de Murmure.";
+const POLL_INTERVAL: Duration = Duration::from_millis(80);
+
+enum Request {
+    Preview,
+    Pause,
+    Resume,
+    Stop,
+}
+
+pub struct PocketPreviewState {
+    tx: Sender<Request>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewEvent {
+    state: &'static str,
+    detail: Option<String>,
+}
+
+fn emit(app: &AppHandle, state: &'static str, detail: Option<String>) {
+    let _ = app.emit("pocket-tts-preview", PreviewEvent { state, detail });
+}
+
+struct TempWave(PathBuf);
+
+impl Drop for TempWave {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn binary_path() -> Result<PathBuf, String> {
+    // Require an explicitly installed sidecar beside the Murmure executable.
+    // Never search PATH or invoke a shell when deciding what code to run.
+    let binary = if cfg!(windows) {
+        "pocket-tts.exe"
+    } else {
+        "pocket-tts"
+    };
+    let dir = std::env::current_exe()
+        .map_err(|_| "Unable to locate Murmure executable".to_string())?
+        .parent()
+        .ok_or("Unable to locate application directory")?
+        .to_path_buf();
+    let path = dir.join(binary);
+    if !path.is_file() {
+        return Err("Pocket TTS sidecar is not installed next to Murmure".to_string());
+    }
+    Ok(path)
+}
+
+fn preview_args(output: &Path) -> Vec<std::ffi::OsString> {
+    use std::ffi::OsString;
+    [
+        OsString::from("generate"),
+        OsString::from("--language"),
+        OsString::from("french"),
+        OsString::from("--voice"),
+        OsString::from("estelle"),
+        OsString::from("--device"),
+        OsString::from("cpu"),
+        OsString::from("--text"),
+        OsString::from(PREVIEW_TEXT),
+        OsString::from("--output-path"),
+        output.as_os_str().to_os_string(),
+    ]
+    .into()
+}
+
+fn run_preview(app: &AppHandle, rx: &Receiver<Request>) -> Result<(), String> {
+    let binary = binary_path()?;
+    let wave = TempWave(std::env::temp_dir().join(format!(
+        "murmure-pocket-preview-{}.wav",
+        uuid::Uuid::new_v4()
+    )));
+
+    emit(app, "generating", None);
+    let mut child = Command::new(binary)
+        .args(preview_args(&wave.0))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "Unable to start Pocket TTS".to_string())?;
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if !status.success() => {
+                return Err("Pocket TTS generation failed".into());
+            }
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Unable to monitor Pocket TTS".into());
+            }
+        }
+        match rx.recv_timeout(POLL_INTERVAL) {
+            Ok(Request::Stop) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                emit(app, "stopped", None);
+                return Ok(());
+            }
+            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(());
+            }
+        }
+    }
+
+    let file = File::open(&wave.0).map_err(|_| "Pocket TTS produced no WAV".to_string())?;
+    let source =
+        rodio::Decoder::new(file).map_err(|_| "Pocket TTS WAV could not be decoded".to_string())?;
+    let builder = rodio::DeviceSinkBuilder::from_default_device()
+        .map_err(|_| "No usable audio output device".to_string())?;
+    let output = builder
+        .open_sink_or_fallback()
+        .map_err(|_| "Unable to open output device".to_string())?;
+    let player = rodio::Player::connect_new(output.mixer());
+    player.append(source);
+    emit(app, "playing", None);
+
+    while !player.empty() {
+        match rx.recv_timeout(POLL_INTERVAL) {
+            Ok(Request::Pause) => {
+                player.pause();
+                emit(app, "paused", None);
+            }
+            Ok(Request::Resume) => {
+                player.play();
+                emit(app, "playing", None);
+            }
+            Ok(Request::Stop) => {
+                player.stop();
+                emit(app, "stopped", None);
+                return Ok(());
+            }
+            Ok(Request::Preview) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                player.stop();
+                return Ok(());
+            }
+        }
+    }
+    emit(app, "idle", None);
+    Ok(())
+}
+
+pub fn init(app: &AppHandle) {
+    let (tx, rx) = mpsc::channel();
+    app.manage(PocketPreviewState { tx });
+    let handle = app.clone();
+    thread::spawn(move || {
+        while let Ok(request) = rx.recv() {
+            if let Request::Preview = request {
+                if let Err(detail) = run_preview(&handle, &rx) {
+                    emit(&handle, "error", Some(detail));
+                }
+            }
+        }
+    });
+}
+
+fn send(app: &AppHandle, action: Request) -> Result<(), String> {
+    app.state::<PocketPreviewState>()
+        .tx
+        .send(action)
+        .map_err(|_| "Pocket TTS preview worker is unavailable".to_string())
+}
+
+#[tauri::command]
+pub fn pocket_tts_preview(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::Preview)
+}
+
+#[tauri::command]
+pub fn pocket_tts_pause(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::Pause)
+}
+
+#[tauri::command]
+pub fn pocket_tts_resume(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::Resume)
+}
+
+#[tauri::command]
+pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::Stop)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_is_french_cpu_only_with_no_runtime_user_text() {
+        let args = preview_args(Path::new("preview.wav"));
+        let parts: Vec<_> = args.iter().map(|a| a.to_string_lossy()).collect();
+        assert!(parts.windows(2).any(|p| p == ["--language", "french"]));
+        assert!(parts.windows(2).any(|p| p == ["--device", "cpu"]));
+        assert!(parts.windows(2).any(|p| p == ["--voice", "estelle"]));
+        assert!(parts.windows(2).any(|p| p == ["--text", PREVIEW_TEXT]));
+    }
+}
