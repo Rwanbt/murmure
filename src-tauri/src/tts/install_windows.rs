@@ -54,8 +54,9 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     }
 
     let target = directory.join("pocket-tts.exe");
-    if target.exists() {
-        // Never silently overwrite an existing (possibly in-use) executable.
+    if std::fs::symlink_metadata(&target).is_ok() {
+        // Reject existing files, symlinks and other filesystem objects; never
+        // overwrite an executable or a stale/broken symbolic link.
         return super::preview::verify_sidecar(&target, super::preview::WINDOWS_SIDECAR_SHA256);
     }
     let reader = std::io::Cursor::new(archive_bytes);
@@ -109,13 +110,17 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
         .map_err(|_| "Unable to locate the application data directory".to_string())?
         .join("pocket-tts").join("bin");
     let target = directory.join("pocket-tts.exe");
-    if target.exists() {
+    if std::fs::symlink_metadata(&target).is_ok() {
         return super::preview::verify_sidecar(
             &target, super::preview::WINDOWS_SIDECAR_SHA256,
         );
     }
 
-    let response = reqwest::Client::new().get(RELEASE_URL).send().await
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|_| "Unable to initialize the Pocket TTS downloader".to_string())?;
+    let response = client.get(RELEASE_URL).send().await
         .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?
         .error_for_status()
         .map_err(|_| "The official Pocket TTS release is unavailable".to_string())?;
