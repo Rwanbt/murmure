@@ -6,13 +6,39 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+use serde::Serialize;
 
 const RELEASE_URL: &str = "https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.0/pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip";
 const ARCHIVE_SHA256: &str = "b3b2faa74703c505e22a7f428c984f69577548c85440c4c9eee0d336797f3cef";
 const MAX_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_EXE_BYTES: u64 = 64 * 1024 * 1024;
 static INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallProgress {
+    received_bytes: usize,
+    total_bytes: Option<u64>,
+}
+
+pub fn cancel_install() -> bool {
+    if INSTALL_ACTIVE.load(Ordering::Acquire) {
+        CANCEL_REQUESTED.store(true, Ordering::Release);
+        true
+    } else {
+        false
+    }
+}
+
+fn check_cancelled() -> Result<(), String> {
+    if CANCEL_REQUESTED.load(Ordering::Acquire) {
+        Err("Pocket TTS installation cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
 
 struct ActiveInstall;
 impl ActiveInstall {
@@ -20,12 +46,14 @@ impl ActiveInstall {
         INSTALL_ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| "A Pocket TTS installation is already running".to_string())?;
+        CANCEL_REQUESTED.store(false, Ordering::Release);
         Ok(Self)
     }
 }
 impl Drop for ActiveInstall {
     fn drop(&mut self) {
         INSTALL_ACTIVE.store(false, Ordering::Release);
+        CANCEL_REQUESTED.store(false, Ordering::Release);
     }
 }
 
@@ -94,6 +122,7 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     super::preview::verify_sidecar(
         &temporary.0, super::preview::WINDOWS_SIDECAR_SHA256,
     )?;
+    check_cancelled()?;
     // On Windows std::fs::rename may replace an existing destination.
     // An atomic hard link cannot overwrite an existing file or symlink,
     // including one created concurrently after the initial check.
@@ -123,22 +152,43 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|_| "Unable to initialize the Pocket TTS downloader".to_string())?;
-    let response = client.get(RELEASE_URL).send().await
-        .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?
-        .error_for_status()
+    let fetch = client.get(RELEASE_URL).send();
+    tokio::pin!(fetch);
+    let response = loop {
+        tokio::select! {
+            result = &mut fetch => break result
+                .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => check_cancelled()?,
+        }
+    }.error_for_status()
         .map_err(|_| "The official Pocket TTS release is unavailable".to_string())?;
     if response.content_length().is_some_and(|n| n > MAX_ARCHIVE_BYTES as u64) {
         return Err("Pocket TTS archive is larger than permitted".into());
     }
+    let total_bytes = response.content_length();
     let mut data = Vec::new();
     let mut chunks = response.bytes_stream();
-    while let Some(chunk) = chunks.next().await {
+    loop {
+        let next = tokio::select! {
+            chunk = chunks.next() => chunk,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => {
+                check_cancelled()?;
+                continue;
+            }
+        };
+        let Some(chunk) = next else { break };
+        check_cancelled()?;
         let chunk = chunk.map_err(|_| "Pocket TTS archive download was interrupted".to_string())?;
         if chunk.len() > MAX_ARCHIVE_BYTES.saturating_sub(data.len()) {
             return Err("Pocket TTS archive exceeded its download limit".into());
         }
         data.extend_from_slice(&chunk);
+        let _ = app.emit("pocket-tts-install-progress", InstallProgress {
+            received_bytes: data.len(),
+            total_bytes,
+        });
     }
+    check_cancelled()?;
     tokio::task::spawn_blocking(move || install_verified_exe(data, &directory))
         .await.map_err(|_| "Pocket TTS installation worker failed".to_string())?
 }
@@ -203,9 +253,14 @@ mod tests {
 
     #[test]
     fn concurrent_installs_are_rejected() {
+        assert!(!cancel_install());
         let lock = ActiveInstall::acquire().unwrap();
         assert!(ActiveInstall::acquire().is_err());
+        assert!(cancel_install());
+        assert!(check_cancelled().is_err());
         drop(lock);
+        assert!(!cancel_install());
+        assert!(check_cancelled().is_ok());
         assert!(ActiveInstall::acquire().is_ok());
     }
 }
