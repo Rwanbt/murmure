@@ -61,8 +61,13 @@ jobs:
             - name: Clippy
               run: pnpm run clippy
 
-            - name: Pocket TTS text safety unit tests
-              run: cargo test --manifest-path src-tauri/Cargo.toml --lib tts::text::tests -- --nocapture
+            - name: Pocket TTS text, preview and preference unit tests
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib commands::settings::pocket_tts_settings_tests
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib settings::settings::tests
 
             - name: Lint
               run: pnpm run lint
