@@ -716,5 +716,7 @@
     "Unable to detect Pocket TTS runtime.": "Impossible de détecter le moteur Pocket TTS.",
     "Your CPU does not support AVX2 required by this Pocket TTS executable.": "Votre processeur ne prend pas en charge AVX2, nécessaire à cet exécutable Pocket TTS.",
     "Pocket TTS executable not found next to Murmure. Obtain the official runtime from Kyutai and verify its checksum before installing it.": "L’exécutable Pocket TTS est introuvable à côté de Murmure. Récupérez le moteur officiel Kyutai et vérifiez son empreinte avant installation.",
-    "Official Pocket TTS release": "Version officielle de Pocket TTS"
+    "Official Pocket TTS release": "Version officielle de Pocket TTS",
+    "Stop speech playback": "Arrêter la lecture vocale",
+    "Stop Pocket TTS playback or generation immediately.": "Arrête immédiatement la lecture ou la génération Pocket TTS."
 }
