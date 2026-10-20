@@ -76,6 +76,8 @@ export const extractSystemSettings = (all: AppSettings): ExportedSystemSettings 
         language: all.language,
         sound_enabled: all.sound_enabled,
         sound_volume: all.sound_volume,
+        tts_model: all.tts_model,
+        tts_volume: all.tts_volume,
         lower_output_while_recording: all.lower_output_while_recording,
         output_volume_while_recording: all.output_volume_while_recording,
         log_level: all.log_level,
@@ -131,6 +133,7 @@ export const extractShortcuts = (all: AppSettings): ShortcutSettings => {
         llm_transform_4_shortcut: all.llm_transform_4_shortcut,
         voice_mode_toggle_shortcut: all.voice_mode_toggle_shortcut,
         cancel_shortcut: all.cancel_shortcut,
+        tts_stop_shortcut: all.tts_stop_shortcut,
     };
 };
 
