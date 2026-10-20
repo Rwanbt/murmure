@@ -101,6 +101,32 @@ pub fn set_cancel_shortcut(app: AppHandle, binding: String) -> Result<String, St
 }
 
 // ============================================================================
+// Pocket TTS Stop Shortcut
+// ============================================================================
+
+#[command]
+pub fn get_tts_stop_shortcut(app: AppHandle) -> Result<String, String> {
+    Ok(settings::load_settings(&app).tts_stop_shortcut)
+}
+
+#[command]
+pub fn set_tts_stop_shortcut(app: AppHandle, binding: String) -> Result<String, String> {
+    let keys = parse_binding_keys(&binding);
+    if !keys.is_empty() {
+        let state = app.state::<ShortcutRegistryState>();
+        let registry = state.0.read();
+        if registry.bindings.iter().any(|b| {
+            b.action != ShortcutAction::StopTts && b.keys == keys
+        }) {
+            return Err("Shortcut is already assigned to another action".to_string());
+        }
+    }
+    apply_shortcut(&app, &binding, ShortcutAction::StopTts, |s| {
+        &mut s.tts_stop_shortcut
+    })
+}
+
+// ============================================================================
 // Cancel Recording (IPC command for overlay button)
 // ============================================================================
 
