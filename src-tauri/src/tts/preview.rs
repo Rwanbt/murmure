@@ -414,6 +414,12 @@ pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
     }
     let parent = app.path().app_cache_dir()
         .map_err(|_| "Unable to locate Murmure's model cache".to_string())?;
+    clear_owned_model_cache(&parent)
+}
+
+/// Operate only on the fixed app-owned child path. Never traverse a symlink
+/// placed at the cache root, including links to shared Hugging Face data.
+fn clear_owned_model_cache(parent: &Path) -> Result<bool, String> {
     let cache = parent.join("pocket-tts");
     let meta = match std::fs::symlink_metadata(&cache) {
         Ok(meta) => meta,
@@ -426,6 +432,7 @@ pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
     std::fs::remove_dir_all(&cache)
         .map_err(|_| "Unable to clear the Pocket TTS model cache".to_string())?;
     Ok(true)
+
 }
 
 #[tauri::command]
@@ -468,6 +475,47 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearing_owned_model_cache_preserves_sibling_data_and_is_idempotent() {
+        let root = std::env::temp_dir().join(format!("murmure-cache-test-{}", uuid::Uuid::new_v4()));
+        let owned = root.join("pocket-tts");
+        let sibling = root.join("other-app");
+        std::fs::create_dir_all(&owned).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        std::fs::write(owned.join("model.bin"), b"model").unwrap();
+        std::fs::write(sibling.join("important.bin"), b"keep").unwrap();
+        assert_eq!(clear_owned_model_cache(&root).unwrap(), true);
+        assert!(!owned.exists());
+        assert_eq!(clear_owned_model_cache(&root).unwrap(), false);
+        assert_eq!(std::fs::read(sibling.join("important.bin")).unwrap(), b"keep");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn clearing_cache_refuses_root_symlink() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!("murmure-link-test-{}", uuid::Uuid::new_v4()));
+        let shared = root.join("shared");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("keep.bin"), b"keep").unwrap();
+        symlink(&shared, root.join("pocket-tts")).unwrap();
+        assert!(clear_owned_model_cache(&root).is_err());
+        assert_eq!(std::fs::read(shared.join("keep.bin")).unwrap(), b"keep");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn clearing_cache_refuses_root_file() {
+        let root = std::env::temp_dir().join(format!("murmure-file-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("pocket-tts"), b"not a cache directory").unwrap();
+        assert!(clear_owned_model_cache(&root).is_err());
+        assert_eq!(std::fs::read(root.join("pocket-tts")).unwrap(), b"not a cache directory");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn model_source_does_not_inherit_user_huggingface_credentials() {
