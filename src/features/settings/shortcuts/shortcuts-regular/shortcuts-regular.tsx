@@ -38,6 +38,12 @@ export const ShortcutsRegular = () => {
         setShortcut: setTtsStopShortcut,
         resetShortcut: resetTtsStopShortcut,
     } = useShortcut(SHORTCUT_CONFIGS.ttsStop);
+    const {
+        shortcut: ttsReadSelectionShortcut,
+        setShortcut: setTtsReadSelectionShortcut,
+        resetShortcut: resetTtsReadSelectionShortcut,
+    } = useShortcut(SHORTCUT_CONFIGS.ttsReadSelection);
+    const isWindows = navigator.userAgent.includes('Windows');
 
     const {
         shortcut: commandShortcut,
@@ -94,6 +100,7 @@ export const ShortcutsRegular = () => {
         { id: 'lastTranscript', name: t('Paste last transcript'), value: lastTranscriptShortcut },
         { id: 'cancel', name: t('Cancel recording'), value: cancelShortcut },
         { id: 'ttsStop', name: t('Stop speech playback'), value: ttsStopShortcut },
+        { id: 'ttsReadSelection', name: t('Read selected text aloud'), value: ttsReadSelectionShortcut },
         { id: 'voiceModeToggle', name: t('Toggle Voice Mode'), value: voiceModeToggleShortcut },
         { id: 'command', name: t('Command, free prompt'), value: commandShortcut },
         { id: 'llmMode1', name: dictateLabel(0), value: llmMode1.shortcut },
@@ -182,6 +189,27 @@ export const ShortcutsRegular = () => {
                             existingShortcuts={othersOf('ttsStop')}
                         />
                     </SettingsUI.Item>
+                    {isWindows && (
+                        <>
+                            <SettingsUI.Separator />
+                            <SettingsUI.Item>
+                                <SettingsUI.Description className="flex-1 min-w-0">
+                                    <Typography.Title>{t('Read selected text aloud')}</Typography.Title>
+                                    <Typography.Paragraph>
+                                        {t('Read the focused text selection using Windows Accessibility without changing the clipboard.')}
+                                    </Typography.Paragraph>
+                                </SettingsUI.Description>
+                                <ShortcutButton
+                                    keyName={t('Read selected text aloud')}
+                                    shortcut={ttsReadSelectionShortcut}
+                                    saveShortcut={setTtsReadSelectionShortcut}
+                                    resetShortcut={resetTtsReadSelectionShortcut}
+                                    dataTestId="tts-read-selection-shortcut-button"
+                                    existingShortcuts={othersOf('ttsReadSelection')}
+                                />
+                            </SettingsUI.Item>
+                        </>
+                    )}
                 </SettingsUI.Section>
 
                 <SettingsUI.Section title={t('Voice Mode')} icon={Mic} titleTestId="voice-mode-title">
