@@ -29,6 +29,7 @@ export const PocketTts = () => {
     const [downloadApproved, setDownloadApproved] = useState(false);
     const [consentBusy, setConsentBusy] = useState(false);
     const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
+    const [installing, setInstalling] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -125,6 +126,23 @@ export const PocketTts = () => {
         }
     };
 
+    const installOfficialRuntime = async () => {
+        setInstalling(true);
+        setDetail(null);
+        try {
+            await invoke('pocket_tts_install');
+            const updated = await invoke<RuntimeStatus>('pocket_tts_status');
+            setRuntimeStatus(updated);
+            if (!updated.verified) {
+                setDetail(t('Pocket TTS installed but its integrity check did not pass.'));
+            }
+        } catch (error) {
+            setDetail(String(error));
+        } finally {
+            setInstalling(false);
+        }
+    };
+
     const changeDownloadApproval = async (approved: boolean) => {
         setConsentBusy(true);
         try {
@@ -165,12 +183,27 @@ export const PocketTts = () => {
                 )}
                 {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.installed && (
                     <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-missing">
-                        {t('Pocket TTS executable not found next to Murmure. Obtain the official runtime from Kyutai and verify its checksum before installing it.')}{' '}
+                        {t('Pocket TTS is not installed in Murmure. Install the official verified Windows runtime explicitly.')} {' '}
                         <a href="https://github.com/kyutai-labs/pocket-tts/releases/tag/v4.0.0" target="_blank" rel="noopener noreferrer" className="underline">
                             {t('Official Pocket TTS release')}
                         </a>
                     </p>
                 )}
+
+                {navigator.userAgent.includes('Windows') && runtimeStatus?.cpuCompatible && !runtimeStatus.verified && (
+                    <button
+                        type="button"
+                        disabled={installing || busy}
+                        className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
+                        onClick={() => void installOfficialRuntime()}
+                        data-testid="pocket-tts-install"
+                    >
+                        {installing ? t('Installing verified Pocket TTS…') : t('Install official Pocket TTS for Windows')}
+                    </button>
+                )}
+                <p className="text-xs text-muted-foreground">
+                    {t('Installing the runtime downloads one pinned Kyutai executable. French model downloads require separate consent below.')}
+                </p>
 
                 <div role="status" aria-live="polite" data-testid="pocket-tts-status">
                     {state === 'idle' && t('Ready')}
