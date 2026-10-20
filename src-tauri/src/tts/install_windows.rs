@@ -145,6 +145,28 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "uses the official pinned Kyutai Windows ZIP downloaded in CI"]
+    fn official_archive_extracts_untampered_binary_and_refuses_overwrite() {
+        let filename = std::env::var_os("MURMURE_TTS_OFFICIAL_ARCHIVE")
+            .expect("MURMURE_TTS_OFFICIAL_ARCHIVE must be the SHA-256 verified archive");
+        let archive = std::fs::read(filename).expect("cannot read official Pocket TTS archive");
+        let directory = std::env::temp_dir()
+            .join(format!("murmure-official-sidecar-{}", uuid::Uuid::new_v4()));
+        install_verified_exe(archive.clone(), &directory)
+            .expect("official Pocket TTS archive must install");
+        let binary = directory.join("pocket-tts.exe");
+        super::super::preview::verify_sidecar(
+            &binary, super::super::preview::WINDOWS_SIDECAR_SHA256,
+        ).expect("installed exe must match the pinned official digest");
+        install_verified_exe(archive.clone(), &directory)
+            .expect("reinstalling an already verified binary must be idempotent");
+        std::fs::write(&binary, b"tampered").expect("tamper fixture");
+        assert!(install_verified_exe(archive, &directory).is_err(),
+            "installer must never replace an unknown existing binary");
+        std::fs::remove_dir_all(&directory).expect("cleanup isolated installer fixture");
+    }
+
+    #[test]
     fn concurrent_installs_are_rejected() {
         let lock = ActiveInstall::acquire().unwrap();
         assert!(ActiveInstall::acquire().is_err());
