@@ -34,6 +34,12 @@ export const ShortcutsRegular = () => {
     } = useShortcut(SHORTCUT_CONFIGS.cancel);
 
     const {
+        shortcut: ttsStopShortcut,
+        setShortcut: setTtsStopShortcut,
+        resetShortcut: resetTtsStopShortcut,
+    } = useShortcut(SHORTCUT_CONFIGS.ttsStop);
+
+    const {
         shortcut: commandShortcut,
         setShortcut: setCommandShortcut,
         resetShortcut: resetCommandShortcut,
@@ -87,6 +93,7 @@ export const ShortcutsRegular = () => {
         { id: 'record', name: recordTitle, value: recordShortcut },
         { id: 'lastTranscript', name: t('Paste last transcript'), value: lastTranscriptShortcut },
         { id: 'cancel', name: t('Cancel recording'), value: cancelShortcut },
+        { id: 'ttsStop', name: t('Stop speech playback'), value: ttsStopShortcut },
         { id: 'voiceModeToggle', name: t('Toggle Voice Mode'), value: voiceModeToggleShortcut },
         { id: 'command', name: t('Command, free prompt'), value: commandShortcut },
         { id: 'llmMode1', name: dictateLabel(0), value: llmMode1.shortcut },
@@ -158,6 +165,21 @@ export const ShortcutsRegular = () => {
                             resetShortcut={resetCancelShortcut}
                             dataTestId="cancel-recording-button"
                             existingShortcuts={othersOf('cancel')}
+                        />
+                    </SettingsUI.Item>
+                    <SettingsUI.Separator />
+                    <SettingsUI.Item>
+                        <SettingsUI.Description className="flex-1 min-w-0">
+                            <Typography.Title>{t('Stop speech playback')}</Typography.Title>
+                            <Typography.Paragraph>{t('Stop Pocket TTS playback or generation immediately.')}</Typography.Paragraph>
+                        </SettingsUI.Description>
+                        <ShortcutButton
+                            keyName={t('Stop speech playback')}
+                            shortcut={ttsStopShortcut}
+                            saveShortcut={setTtsStopShortcut}
+                            resetShortcut={resetTtsStopShortcut}
+                            dataTestId="tts-stop-shortcut-button"
+                            existingShortcuts={othersOf('ttsStop')}
                         />
                     </SettingsUI.Item>
                 </SettingsUI.Section>
