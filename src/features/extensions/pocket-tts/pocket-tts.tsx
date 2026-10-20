@@ -37,6 +37,7 @@ export const PocketTts = () => {
     const [installing, setInstalling] = useState(false);
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
     const [cancelRequested, setCancelRequested] = useState(false);
+    const [clearingCache, setClearingCache] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -180,6 +181,20 @@ export const PocketTts = () => {
         }
     };
 
+    const clearModelCache = async () => {
+        if (!window.confirm(t('Delete Pocket TTS models downloaded by Murmure?'))) return;
+        setClearingCache(true);
+        setDetail(null);
+        try {
+            await invoke<boolean>('pocket_tts_clear_model_cache');
+            setDetail(t('Murmure Pocket TTS model cache cleared.'));
+        } catch (error) {
+            setDetail(String(error));
+        } finally {
+            setClearingCache(false);
+        }
+    };
+
     const changeDownloadApproval = async (approved: boolean) => {
         setConsentBusy(true);
         try {
@@ -298,6 +313,15 @@ export const PocketTts = () => {
                         {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
                     </p>
                 </div>
+                <button
+                    type="button"
+                    disabled={busy || installing || clearingCache}
+                    onClick={() => void clearModelCache()}
+                    className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
+                    data-testid="pocket-tts-clear-cache"
+                >
+                    {clearingCache ? t('Deleting downloaded Pocket TTS models…') : t('Delete downloaded Pocket TTS models')}
+                </button>
                 <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
                     {t('French speech model')}
                 </label>
