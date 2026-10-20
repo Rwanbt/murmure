@@ -88,6 +88,18 @@ pub struct PocketTtsRuntimeStatus {
 }
 
 #[tauri::command]
+pub fn pocket_tts_cancel_install() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        super::install_windows::cancel_install()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
 pub async fn pocket_tts_install(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {

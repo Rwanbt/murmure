@@ -19,6 +19,11 @@ interface RuntimeStatus {
     cpuCompatible: boolean;
 }
 
+interface InstallProgress {
+    receivedBytes: number;
+    totalBytes: number | null;
+}
+
 export const PocketTts = () => {
     const { t } = useTranslation();
     const [state, setState] = useState<PreviewState>('idle');
@@ -30,6 +35,8 @@ export const PocketTts = () => {
     const [consentBusy, setConsentBusy] = useState(false);
     const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
     const [installing, setInstalling] = useState(false);
+    const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
+    const [cancelRequested, setCancelRequested] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -126,8 +133,36 @@ export const PocketTts = () => {
         }
     };
 
+    useEffect(() => {
+        let active = true;
+        let unlisten: (() => void) | undefined;
+        void listen<InstallProgress>('pocket-tts-install-progress', ({ payload }) => {
+            if (active) setInstallProgress(payload);
+        }).then((stop) => {
+            if (active) unlisten = stop;
+            else stop();
+        }).catch(() => {
+            if (active) setDetail(t('Unable to track Pocket TTS download progress.'));
+        });
+        return () => { active = false; unlisten?.(); };
+    }, [t]);
+
+    const cancelRuntimeInstall = async () => {
+        try {
+            if (await invoke<boolean>('pocket_tts_cancel_install')) {
+                setCancelRequested(true);
+            } else {
+                setDetail(t('Pocket TTS installation has already finished or has not started.'));
+            }
+        } catch (error) {
+            setDetail(String(error));
+        }
+    };
+
     const installOfficialRuntime = async () => {
         setInstalling(true);
+        setInstallProgress(null);
+        setCancelRequested(false);
         setDetail(null);
         try {
             await invoke('pocket_tts_install');
@@ -140,6 +175,8 @@ export const PocketTts = () => {
             setDetail(String(error));
         } finally {
             setInstalling(false);
+            setInstallProgress(null);
+            setCancelRequested(false);
         }
     };
 
@@ -200,6 +237,26 @@ export const PocketTts = () => {
                     >
                         {installing ? t('Installing verified Pocket TTS…') : t('Install official Pocket TTS for Windows')}
                     </button>
+                )}
+                {installing && (
+                    <div role="status" aria-live="polite" data-testid="pocket-tts-install-progress" className="space-y-2">
+                        <p className="text-sm">
+                            {cancelRequested
+                                ? t('Cancelling Pocket TTS installation…')
+                                : installProgress?.totalBytes
+                                    ? `${t('Downloading Pocket TTS')}: ${Math.min(100, Math.round(100 * installProgress.receivedBytes / installProgress.totalBytes))}%`
+                                    : `${t('Downloading Pocket TTS')}: ${installProgress?.receivedBytes ?? 0} ${t('bytes received')}`}
+                        </p>
+                        <button
+                            type="button"
+                            disabled={cancelRequested}
+                            onClick={() => void cancelRuntimeInstall()}
+                            className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
+                            data-testid="pocket-tts-cancel-install"
+                        >
+                            {t('Cancel installation')}
+                        </button>
+                    </div>
                 )}
                 <p className="text-xs text-muted-foreground">
                     {t('Installing the runtime downloads one pinned Kyutai executable. French model downloads require separate consent below.')}

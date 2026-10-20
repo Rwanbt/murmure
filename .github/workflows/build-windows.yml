@@ -88,6 +88,8 @@ jobs:
                   $env:MURMURE_TTS_OFFICIAL_ARCHIVE = Join-Path $folder 'pocket-tts.zip'
                   cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests::official_archive_extracts_untampered_binary_and_refuses_overwrite -- --exact --ignored
                   if ($LASTEXITCODE -ne 0) { throw 'Verified Windows ZIP installer integration failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests::cancelled_install_never_publishes_an_executable -- --exact --ignored
+                  if ($LASTEXITCODE -ne 0) { throw 'Cancelled install published a binary or left temporary files' }
                   Remove-Item Env:MURMURE_TTS_OFFICIAL_ARCHIVE -ErrorAction SilentlyContinue
 
             - name: Prepare unsigned artifacts

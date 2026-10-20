@@ -3,29 +3,68 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+use serde::Serialize;
 
 const RELEASE_URL: &str = "https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.0/pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip";
 const ARCHIVE_SHA256: &str = "b3b2faa74703c505e22a7f428c984f69577548c85440c4c9eee0d336797f3cef";
 const MAX_ARCHIVE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_EXE_BYTES: u64 = 64 * 1024 * 1024;
 static INSTALL_ACTIVE: AtomicBool = AtomicBool::new(false);
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+// Protect activation/cancellation and the final publish as one coherent
+// ordering, so cancellation cannot be lost between acquiring and reset.
+static INSTALL_CONTROL: Mutex<()> = Mutex::new(());
+static PUBLISHED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallProgress {
+    received_bytes: usize,
+    total_bytes: Option<u64>,
+}
+
+pub fn cancel_install() -> bool {
+    let Ok(_guard) = INSTALL_CONTROL.lock() else { return false };
+    if !INSTALL_ACTIVE.load(Ordering::Acquire) || PUBLISHED.load(Ordering::Acquire) {
+        return false;
+    }
+    CANCEL_REQUESTED.store(true, Ordering::Release);
+    true
+}
+
+fn check_cancelled() -> Result<(), String> {
+    if CANCEL_REQUESTED.load(Ordering::Acquire) {
+        Err("Pocket TTS installation cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
 
 struct ActiveInstall;
 impl ActiveInstall {
     fn acquire() -> Result<Self, String> {
+        let _guard = INSTALL_CONTROL.lock()
+            .map_err(|_| "TTS installer state is unavailable".to_string())?;
         INSTALL_ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .map_err(|_| "A Pocket TTS installation is already running".to_string())?;
+        CANCEL_REQUESTED.store(false, Ordering::Release);
+        PUBLISHED.store(false, Ordering::Release);
         Ok(Self)
     }
 }
 impl Drop for ActiveInstall {
     fn drop(&mut self) {
-        INSTALL_ACTIVE.store(false, Ordering::Release);
+        if let Ok(_guard) = INSTALL_CONTROL.lock() {
+            INSTALL_ACTIVE.store(false, Ordering::Release);
+            CANCEL_REQUESTED.store(false, Ordering::Release);
+            PUBLISHED.store(false, Ordering::Release);
+        }
     }
 }
 
@@ -94,6 +133,9 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     super::preview::verify_sidecar(
         &temporary.0, super::preview::WINDOWS_SIDECAR_SHA256,
     )?;
+    let _guard = INSTALL_CONTROL.lock()
+        .map_err(|_| "TTS installer state is unavailable".to_string())?;
+    check_cancelled()?;
     // On Windows std::fs::rename may replace an existing destination.
     // An atomic hard link cannot overwrite an existing file or symlink,
     // including one created concurrently after the initial check.
@@ -101,6 +143,7 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     // removes the staging name and leaves the published verified binary.
     std::fs::hard_link(&temporary.0, &target)
         .map_err(|_| "Unable to publish Pocket TTS without replacing existing files".to_string())?;
+    PUBLISHED.store(true, Ordering::Release);
     Ok(())
 }
 
@@ -123,22 +166,43 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .map_err(|_| "Unable to initialize the Pocket TTS downloader".to_string())?;
-    let response = client.get(RELEASE_URL).send().await
-        .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?
-        .error_for_status()
+    let fetch = client.get(RELEASE_URL).send();
+    tokio::pin!(fetch);
+    let response = loop {
+        tokio::select! {
+            result = &mut fetch => break result
+                .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => check_cancelled()?,
+        }
+    }.error_for_status()
         .map_err(|_| "The official Pocket TTS release is unavailable".to_string())?;
     if response.content_length().is_some_and(|n| n > MAX_ARCHIVE_BYTES as u64) {
         return Err("Pocket TTS archive is larger than permitted".into());
     }
+    let total_bytes = response.content_length();
     let mut data = Vec::new();
     let mut chunks = response.bytes_stream();
-    while let Some(chunk) = chunks.next().await {
+    loop {
+        let next = tokio::select! {
+            chunk = chunks.next() => chunk,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => {
+                check_cancelled()?;
+                continue;
+            }
+        };
+        let Some(chunk) = next else { break };
+        check_cancelled()?;
         let chunk = chunk.map_err(|_| "Pocket TTS archive download was interrupted".to_string())?;
         if chunk.len() > MAX_ARCHIVE_BYTES.saturating_sub(data.len()) {
             return Err("Pocket TTS archive exceeded its download limit".into());
         }
         data.extend_from_slice(&chunk);
+        let _ = app.emit("pocket-tts-install-progress", InstallProgress {
+            received_bytes: data.len(),
+            total_bytes,
+        });
     }
+    check_cancelled()?;
     tokio::task::spawn_blocking(move || install_verified_exe(data, &directory))
         .await.map_err(|_| "Pocket TTS installation worker failed".to_string())?
 }
@@ -175,6 +239,28 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "uses the pinned official Windows release archive from CI"]
+    fn cancelled_install_never_publishes_an_executable() {
+        let archive_path = std::env::var_os("MURMURE_TTS_OFFICIAL_ARCHIVE")
+            .expect("Pinned release fixture is required");
+        let bytes = std::fs::read(archive_path).expect("Unable to read pinned release");
+        let directory = std::env::temp_dir()
+            .join(format!("murmure-cancel-install-{}", uuid::Uuid::new_v4()));
+        let guard = ActiveInstall::acquire().expect("installer must be idle");
+        assert!(cancel_install(), "active installation must accept cancellation");
+        assert!(install_verified_exe(bytes, &directory).is_err(),
+            "cancelled installation unexpectedly succeeded");
+        assert!(!directory.join("pocket-tts.exe").exists(),
+            "cancelled download published an executable");
+        if directory.exists() {
+            let remaining = std::fs::read_dir(&directory).unwrap().count();
+            assert_eq!(remaining, 0, "cancelled install left staging files");
+            std::fs::remove_dir(&directory).unwrap();
+        }
+        drop(guard);
+    }
+
+    #[test]
     fn rejected_archive_never_creates_a_sidecar_or_staging_files() {
         let directory = std::env::temp_dir()
             .join(format!("murmure-tts-invalid-{}", uuid::Uuid::new_v4()));
@@ -203,9 +289,14 @@ mod tests {
 
     #[test]
     fn concurrent_installs_are_rejected() {
+        assert!(!cancel_install());
         let lock = ActiveInstall::acquire().unwrap();
         assert!(ActiveInstall::acquire().is_err());
+        assert!(cancel_install());
+        assert!(check_cancelled().is_err());
         drop(lock);
+        assert!(!cancel_install());
+        assert!(check_cancelled().is_ok());
         assert!(ActiveInstall::acquire().is_ok());
     }
 }
