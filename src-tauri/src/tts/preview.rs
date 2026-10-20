@@ -478,12 +478,15 @@ mod tests {
     }
 
     #[test]
-    fn runtime_status_is_consistent_with_binary_preflight() {
-        // The status command requires an AppHandle so it can resolve the
-        // user-local runtime path; binary integrity is covered separately.
-        assert_eq!(status.cpu_compatible, cpu_compatible());
-        if !status.cpu_compatible {
-            assert!(!status.installed);
+    fn installed_sidecar_identity_fails_closed_without_a_real_file() {
+        assert!(verify_sidecar(
+            Path::new("nonexistent-murmure-tts-runtime-for-test.exe"),
+            "invalid",
+        ).is_err());
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(WINDOWS_SIDECAR_SHA256.len(), 64);
+            assert!(WINDOWS_SIDECAR_SHA256.bytes().all(|b| b.is_ascii_hexdigit()));
         }
     }
 
