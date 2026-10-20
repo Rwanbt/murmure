@@ -44,6 +44,9 @@ export const PocketTts = () => {
     const run = async (command: string) => {
         try {
             setDetail(null);
+            // Guard the UI immediately: the Tauri event is asynchronous and
+            // double-clicking must not enqueue two generations.
+            if (command === 'pocket_tts_preview') setState('generating');
             await invoke(command);
         } catch (error) {
             setState('error');
