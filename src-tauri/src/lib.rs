@@ -453,6 +453,8 @@ pub fn run() {
             set_cancel_shortcut,
             get_tts_stop_shortcut,
             set_tts_stop_shortcut,
+            get_tts_read_selection_shortcut,
+            set_tts_read_selection_shortcut,
             cancel_recording,
             get_llm_mode_1_shortcut,
             set_llm_mode_1_shortcut,
