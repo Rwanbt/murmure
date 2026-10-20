@@ -104,6 +104,17 @@ pub fn set_cancel_shortcut(app: AppHandle, binding: String) -> Result<String, St
 // Pocket TTS Stop Shortcut
 // ============================================================================
 
+fn has_tts_shortcut_conflict(
+    registry: &crate::shortcuts::types::ShortcutRegistry,
+    keys: &[i32],
+) -> bool {
+    !keys.is_empty()
+        && registry
+            .bindings
+            .iter()
+            .any(|binding| binding.action != ShortcutAction::StopTts && binding.keys == keys)
+}
+
 #[command]
 pub fn get_tts_stop_shortcut(app: AppHandle) -> Result<String, String> {
     Ok(settings::load_settings(&app).tts_stop_shortcut)
@@ -115,15 +126,34 @@ pub fn set_tts_stop_shortcut(app: AppHandle, binding: String) -> Result<String, 
     if !keys.is_empty() {
         let state = app.state::<ShortcutRegistryState>();
         let registry = state.0.read();
-        if registry.bindings.iter().any(|b| {
-            b.action != ShortcutAction::StopTts && b.keys == keys
-        }) {
+        if has_tts_shortcut_conflict(&registry, &keys) {
             return Err("Shortcut is already assigned to another action".to_string());
         }
     }
     apply_shortcut(&app, &binding, ShortcutAction::StopTts, |s| {
         &mut s.tts_stop_shortcut
     })
+}
+
+#[cfg(test)]
+mod tts_shortcut_tests {
+    use super::*;
+    use crate::settings::types::AppSettings;
+    use crate::shortcuts::types::ShortcutRegistry;
+
+    #[test]
+    fn tts_stop_rejects_a_shortcut_already_assigned_to_recording() {
+        let registry = ShortcutRegistry::from_settings(&AppSettings::default());
+        assert!(has_tts_shortcut_conflict(
+            &registry,
+            &parse_binding_keys("ctrl+space")
+        ));
+        assert!(!has_tts_shortcut_conflict(
+            &registry,
+            &parse_binding_keys("ctrl+alt+k")
+        ));
+        assert!(!has_tts_shortcut_conflict(&registry, &[]));
+    }
 }
 
 // ============================================================================
