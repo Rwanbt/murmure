@@ -105,6 +105,18 @@ mod tests {
     }
 
     #[test]
+    fn legacy_configuration_restores_and_can_disable_pause_shortcut() {
+        let old = parse_settings(r#"{"tts_stop_shortcut":"ctrl+alt+k"}"#);
+        assert_eq!(old.tts_pause_shortcut, "ctrl+alt+p");
+        let mut custom = old;
+        custom.tts_pause_shortcut = "ctrl+shift+p".to_string();
+        let persisted = parse_settings(&serde_json::to_string(&custom).unwrap());
+        assert_eq!(persisted.tts_pause_shortcut, "ctrl+shift+p");
+        custom.tts_pause_shortcut.clear();
+        assert!(parse_settings(&serde_json::to_string(&custom).unwrap()).tts_pause_shortcut.is_empty());
+    }
+
+    #[test]
     fn tts_stop_hotkey_survives_settings_round_trip_and_can_be_disabled() {
         let mut settings = AppSettings::default();
         settings.tts_stop_shortcut = "ctrl+shift+q".to_string();
