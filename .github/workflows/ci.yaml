@@ -84,6 +84,22 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
 
+    pocket-tts-french-audio:
+        name: Pocket TTS real French WAV on Windows
+        if: github.head_ref == 'feat/pocket-tts-french-audio-smoke'
+        runs-on: windows-latest
+        timeout-minutes: 25
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Generate genuine local French CPU audio and validate WAV
+              shell: pwsh
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: |
+                  ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french" -GenerateFrench
+
     compile-linux:
         uses: ./.github/workflows/build-linux.yml
         with:
