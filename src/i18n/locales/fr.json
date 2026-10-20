@@ -706,5 +706,11 @@
     "Resume": "Reprendre",
     "Stop": "Arrêter",
     "Text-to-speech currently requires explicit input. Selection reading and global shortcuts will follow after runtime validation.": "La lecture vocale exige actuellement un texte saisi volontairement. La lecture de sélection et les raccourcis globaux seront ajoutés après validation du moteur.",
-    "Unable to subscribe to Pocket TTS status.": "Impossible de suivre l’état de Pocket TTS."
+    "Unable to subscribe to Pocket TTS status.": "Impossible de suivre l’état de Pocket TTS.",
+    "French speech model": "Modèle de synthèse française",
+    "French — efficient CPU model": "Français — modèle économe sur CPU",
+    "French — 24 layers (larger experimental model)": "Français — 24 couches (modèle expérimental plus volumineux)",
+    "Playback volume": "Volume de lecture",
+    "Changes apply to the next playback. Larger models may require more RAM and a separate download.": "Ces réglages s’appliquent à la prochaine lecture. Les modèles plus volumineux peuvent nécessiter davantage de mémoire et un téléchargement distinct.",
+    "Unable to load TTS settings.": "Impossible de charger les réglages de synthèse vocale."
 }
