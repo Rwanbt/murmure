@@ -202,7 +202,7 @@ pub fn init(app: &AppHandle) {
 
 fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     let state = app.state::<PocketPreviewState>();
-    let is_preview = matches!(action, Request::Preview);
+    let is_preview = matches!(&action, Request::Preview);
     if is_preview && !acquire_preview(&state.busy) {
         return Err("Pocket TTS preview is already active".to_string());
     }
