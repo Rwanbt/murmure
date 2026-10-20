@@ -230,6 +230,16 @@ mod tests {
     }
 
     #[test]
+    fn registers_pause_tts_without_colliding_with_stt_or_stop() {
+        let s = AppSettings::default();
+        let registry = ShortcutRegistry::from_settings(&s);
+        let pause = find(&registry, &ShortcutAction::TogglePauseTts).unwrap();
+        assert_eq!(pause.keys, parse_binding_keys("ctrl+alt+p"));
+        assert_ne!(pause.keys, find(&registry, &ShortcutAction::StopTts).unwrap().keys);
+        assert_ne!(pause.keys, find(&registry, &ShortcutAction::StartRecording).unwrap().keys);
+    }
+
+    #[test]
     fn registers_default_tts_stop_shortcut_without_affecting_stt() {
         let s = AppSettings::default();
         let registry = ShortcutRegistry::from_settings(&s);
