@@ -136,6 +136,7 @@ fn configure_model_source(command: &mut Command, cache_dir: &Path) {
     command.env("HF_HOME", cache_dir)
         .env("HF_ENDPOINT", "https://huggingface.co")
         .env_remove("HF_TOKEN")
+        .env_remove("HF_TOKEN_PATH")
         .env_remove("HUGGING_FACE_HUB_TOKEN")
         .env_remove("HUGGINGFACE_HUB_CACHE")
         .env_remove("HF_HUB_CACHE");
@@ -376,6 +377,7 @@ mod tests {
                                     value.map(|v| v.to_string_lossy().into_owned())))
             .collect();
         assert_eq!(entries.get("HF_TOKEN"), Some(&None));
+        assert_eq!(entries.get("HF_TOKEN_PATH"), Some(&None));
         assert_eq!(entries.get("HUGGINGFACE_HUB_CACHE"), Some(&None));
         assert_eq!(entries.get("HF_ENDPOINT"),
                    Some(&Some("https://huggingface.co".to_string())));
