@@ -156,6 +156,20 @@ mod tts_shortcut_tests {
             &ShortcutAction::StopTts
         ));
         assert!(!has_tts_shortcut_conflict(&registry, &[], &ShortcutAction::StopTts));
+        #[cfg(target_os = "windows")]
+        {
+            assert!(has_tts_shortcut_conflict(
+                &registry,
+                &parse_binding_keys("ctrl+alt+k"),
+                &ShortcutAction::ReadSelectedTts
+            ));
+            assert!(!has_tts_shortcut_conflict(
+                &registry,
+                &parse_binding_keys("ctrl+alt+l"),
+                &ShortcutAction::ReadSelectedTts
+            ));
+        }
+
     }
 }
 
