@@ -94,10 +94,13 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     super::preview::verify_sidecar(
         &temporary.0, super::preview::WINDOWS_SIDECAR_SHA256,
     )?;
-    // Atomic publish within one directory. If another install wrote the target
-    // first or the directory is protected, fail without replacing it.
-    std::fs::rename(&temporary.0, &target)
-        .map_err(|_| "Unable to install Pocket TTS executable".to_string())?;
+    // On Windows std::fs::rename may replace an existing destination.
+    // An atomic hard link cannot overwrite an existing file or symlink,
+    // including one created concurrently after the initial check.
+    // Both paths are in the same directory / volume; the Drop guard
+    // removes the staging name and leaves the published verified binary.
+    std::fs::hard_link(&temporary.0, &target)
+        .map_err(|_| "Unable to publish Pocket TTS without replacing existing files".to_string())?;
     Ok(())
 }
 
@@ -169,6 +172,33 @@ mod tests {
         assert!(install_verified_exe(archive, &directory).is_err(),
             "installer must never replace an unknown existing binary");
         std::fs::remove_dir_all(&directory).expect("cleanup isolated installer fixture");
+    }
+
+    #[test]
+    fn rejected_archive_never_creates_a_sidecar_or_staging_files() {
+        let directory = std::env::temp_dir()
+            .join(format!("murmure-tts-invalid-{}", uuid::Uuid::new_v4()));
+        assert!(install_verified_exe(b"not a verified release".to_vec(), &directory).is_err());
+        assert!(!directory.exists(), "invalid archive unexpectedly created the installation directory");
+    }
+
+    #[test]
+    fn publishing_verified_binary_never_overwrites_an_existing_target() {
+        let directory = std::env::temp_dir()
+            .join(format!("murmure-tts-link-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let staged = directory.join("staged.partial");
+        let target = directory.join("pocket-tts.exe");
+        std::fs::write(&staged, b"verified-for-test").unwrap();
+        std::fs::write(&target, b"preexisting-file").unwrap();
+        assert!(std::fs::hard_link(&staged, &target).is_err(),
+            "publishing unexpectedly replaced a preexisting target");
+        assert_eq!(std::fs::read(&target).unwrap(), b"preexisting-file");
+        std::fs::remove_file(&target).unwrap();
+        std::fs::hard_link(&staged, &target).expect("publish into empty destination");
+        std::fs::remove_file(&staged).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"verified-for-test");
+        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]
