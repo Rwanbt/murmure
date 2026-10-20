@@ -44,6 +44,11 @@ impl ShortcutRegistry {
             ShortcutAction::CancelRecording,
             ActivationMode::PushToTalk,
         );
+        push_if_set(
+            &settings.tts_stop_shortcut,
+            ShortcutAction::StopTts,
+            ActivationMode::PushToTalk,
+        );
 
         let mode_shortcuts = [
             (&settings.llm_mode_1_shortcut, 0),
@@ -200,6 +205,16 @@ mod tests {
             .iter()
             .find(|b| &b.action == action)
             .cloned()
+    }
+
+    #[test]
+    fn registers_default_tts_stop_shortcut_without_affecting_stt() {
+        let s = AppSettings::default();
+        let registry = ShortcutRegistry::from_settings(&s);
+        let stop = find(&registry, &ShortcutAction::StopTts).unwrap();
+        assert_eq!(stop.keys, parse_binding_keys("ctrl+alt+k"));
+        let recording = find(&registry, &ShortcutAction::StartRecording).unwrap();
+        assert_eq!(recording.keys, parse_binding_keys("ctrl+space"));
     }
 
     #[test]
