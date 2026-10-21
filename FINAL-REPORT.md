@@ -24,7 +24,7 @@ this report is the summary and the verdict.
 | Screen structure audit | **133 screens**, 0 finding | `scripts/audit-accessibility.py` |
 | Rust unit tests | **400 passed, 0 failed** | `cargo test --lib` |
 | TypeScript and lint | **Clean** | `tsc --noEmit` exit 0, `eslint --max-warnings 0` exit 0 |
-| STT round trip with the real model | **A real French recording is transcribed by the pinned Parakeet model** | "Pocket TTS to Parakeet French round trip" job |
+| STT round trip with the real model | **NOT PROVEN, and the job that claimed it was green while running zero tests.** The function carried `#[ignore]` without `#[test]`, so the harness never registered it and cargo reported `running 0 tests` and succeeded. The attribute is restored and the job now fails unless the output contains `1 passed` (commit `0264519`); the re-run is what will decide the claim | "Pocket TTS to Parakeet French round trip" job, log line `running 0 tests; 404 filtered out` in run `39587708682` |
 
 ## 2. Defects found and fixed
 
@@ -50,6 +50,12 @@ Two claims made earlier in this effort were **wrong and were corrected**:
    The player drains its mixer in blocks, so that proof depended on the
    machine; the decode proof now inspects the samples and the transport is
    proven deterministically on an in-memory queue.
+3. "The speech recognition round trip is proven by a green job." It was not:
+   the test was never registered, so the job ran zero cases and exited
+   successfully. A green job that runs nothing is worse than a red one,
+   because it removes the reason to look. The attribute is restored, the job
+   now refuses a run that does not report `1 passed`, and a mechanical check
+   refuses any ignored function that is not registered.
 
 ## 3. Pull requests
 
