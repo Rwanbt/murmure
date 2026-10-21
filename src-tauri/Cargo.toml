@@ -19,7 +19,25 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+# The `common-controls-v6` feature is deliberately left out. It makes the
+# window menu library of the framework import the task dialog of the common
+# controls version 6, which only the side-by-side assembly exports. The
+# application declares that assembly in its own manifest, but a test binary is
+# produced by the test harness of the compiler and carries no manifest at all,
+# so the loader resolves the version 5 of the library, does not find the task
+# dialog, and refuses to start the process before any test runs. Without the
+# feature the library falls back to the message box of the user interface
+# library, which every Windows installation exports.
+tauri = { version = "2", default-features = false, features = [
+    "tray-icon",
+    "image-png",
+    "macos-private-api",
+    "wry",
+    "compression",
+    "dynamic-acl",
+    "x11",
+    "dbus",
+] }
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
