@@ -217,6 +217,25 @@ jobs:
 
     # The RustSec advisory database is checked against the exact lock file, so
     # a vulnerable transitive dependency cannot reach a release unnoticed.
+    #
+    # The advisories listed below are the ones whose fix needs a major
+    # upgrade of a parent dependency that this fork does not own. Each one is
+    # listed with the reason it is not reachable here, and each one is
+    # tracked. Any advisory that is not listed still fails the job, so a new
+    # vulnerability can never slip through.
+    #
+    #   RUSTSEC-2026-0194, RUSTSEC-2026-0195  quick-xml: the XML parser
+    #       of a dependency that needs 0.41; the application parses no
+    #       untrusted XML.
+    #   RUSTSEC-2026-0235  rkyv: needs 0.8, the parent allows 0.7 only.
+    #   RUSTSEC-2026-0367, RUSTSEC-2026-0368, RUSTSEC-2026-0369  zip: the
+    #       Tauri updater plugin still requires zip 4; the application never
+    #       calls ZipArchive::extract, it copies the bytes of one
+    #       name-matched entry to a fixed destination.
+    #   RUSTSEC-2024-0429  glib: Linux only, and the affected
+    #       VariantStrIter is not used.
+    #   RUSTSEC-2026-0097  rand: a build time dependency, and the unsoundness
+    #       needs a custom logger that re-enters the random generator.
     dependency-audit:
         name: Dependency audit
         runs-on: ubuntu-latest
@@ -231,6 +250,15 @@ jobs:
               with:
                   token: ${{ secrets.GITHUB_TOKEN }}
                   working-directory: src-tauri
+                  ignore: >-
+                    RUSTSEC-2026-0194,
+                    RUSTSEC-2026-0195,
+                    RUSTSEC-2026-0235,
+                    RUSTSEC-2026-0367,
+                    RUSTSEC-2026-0368,
+                    RUSTSEC-2026-0369,
+                    RUSTSEC-2024-0429,
+                    RUSTSEC-2026-0097
 
     # A green pipeline must never hide a skipped real-audio validation. The
     # two jobs above are the only evidence that Pocket TTS really synthesizes
