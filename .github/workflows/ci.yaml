@@ -190,6 +190,11 @@ jobs:
             - name: Install frontend deps
               run: pnpm install --ignore-scripts
               shell: pwsh
+            - name: Build the local frontend resources
+              # The Tauri build script refuses to run when the SmartMic
+              # resources are missing, so they are built before the crate.
+              run: pnpm build:smartmic
+              shell: pwsh
             - name: Generate real French speech and transcribe it with the pinned model
               shell: pwsh
               env:
