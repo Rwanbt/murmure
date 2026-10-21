@@ -92,11 +92,43 @@ fn real_french_speech_is_transcribed() {
         "the resampled recording must not be empty"
     );
 
+    // The two phases are timed so a run carries a number for the cost of the
+    // engine, instead of the report having to say that performance was never
+    // measured. The bound is deliberately loose: it exists to catch a
+    // pathological regression on a shared runner, not to police a normal one.
+    let samples = resampled.len();
+    let loading_started = std::time::Instant::now();
     let mut engine = crate::engine::ParakeetEngine::load_int8(Path::new(&model_dir), tokenizer)
         .expect("the pinned Parakeet model must load");
+    let loading = loading_started.elapsed();
+
+    let transcription_started = std::time::Instant::now();
     let result = engine
         .transcribe_samples(resampled, None)
         .expect("the transcription must succeed");
+    let transcription = transcription_started.elapsed();
+
+    let audio_seconds = samples as f64 / ENGINE_SAMPLE_RATE as f64;
+    let real_time_factor = transcription.as_secs_f64() / audio_seconds;
+    println!(
+        "engine load: {:.2} s, transcription: {:.2} s for {:.2} s of audio, real time factor {:.3}",
+        loading.as_secs_f64(),
+        transcription.as_secs_f64(),
+        audio_seconds,
+        real_time_factor
+    );
+    assert!(
+        loading < std::time::Duration::from_secs(120),
+        "loading the pinned model took {:.1} s, which is far beyond a healthy run",
+        loading.as_secs_f64()
+    );
+    assert!(
+        real_time_factor < 20.0,
+        "transcribing {:.2} s of audio took {:.2} s, a real time factor of {:.1}",
+        audio_seconds,
+        transcription.as_secs_f64(),
+        real_time_factor
+    );
 
     let text = normalize(&result.text);
     assert!(
