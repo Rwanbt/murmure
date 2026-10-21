@@ -20,6 +20,16 @@ jobs:
               with:
                   workspaces: './src-tauri -> target'
 
+            # The ONNX Runtime build script downloads a prebuilt binary that
+            # the rust cache does not cover. Without this cache a transient
+            # network failure in that download fails the mandatory Clippy gate.
+            - name: Cache the ONNX Runtime prebuilt binaries
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ort.pyke.io
+                  key: ort-pyke-${{ hashFiles('src-tauri/Cargo.lock') }}
+                  restore-keys: ort-pyke-
+
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
 
@@ -59,7 +69,21 @@ jobs:
               run: pnpm build:smartmic
 
             - name: Clippy
-              run: pnpm run clippy
+              shell: bash
+              run: |
+                  set -uo pipefail
+                  # The ONNX Runtime prebuilt binary is fetched during the
+                  # build. A dropped connection there is a network fault, not
+                  # a code fault, so the gate is retried before it fails.
+                  for attempt in 1 2 3; do
+                      if pnpm run clippy; then
+                          exit 0
+                      fi
+                      echo "Clippy attempt $attempt failed; retrying after a possible download fault."
+                      sleep 20
+                  done
+                  echo "Clippy failed after 3 attempts."
+                  exit 1
 
             - name: Pocket TTS text, preview and preference unit tests
               shell: bash

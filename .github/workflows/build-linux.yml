@@ -32,6 +32,16 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+
+            # The ONNX Runtime build script downloads a prebuilt binary that
+            # the rust cache does not cover. A transient network failure in
+            # that download would otherwise fail the mandatory compile gate.
+            - name: Cache the ONNX Runtime prebuilt binaries
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/ort.pyke.io
+                  key: ort-pyke-${{ hashFiles('src-tauri/Cargo.lock') }}
+                  restore-keys: ort-pyke-
                   key: 'ubuntu-22.04-fresh'
 
             - name: Install pnpm
