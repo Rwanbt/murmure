@@ -741,5 +741,9 @@
     "bytes received": "octets reçus",
     "Cancel installation": "Annuler l’installation",
     "Pause or resume speech": "Mettre la voix en pause ou reprendre",
-    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre."
+    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre.",
+    "Install the official Pocket TTS runtime": "Installer le moteur Pocket TTS officiel",
+    "Pocket TTS download progress": "Progression du téléchargement de Pocket TTS",
+    "The official Pocket TTS release has no build for this system, so speech is unavailable here.": "La version officielle de Pocket TTS ne fournit pas de binaire pour ce système, la lecture est donc indisponible ici.",
+    "Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.": "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié."
 }

@@ -18,6 +18,11 @@ interface RuntimeStatus {
     installed: boolean;
     verified: boolean;
     cpuCompatible: boolean;
+    // Whether the official release publishes a runtime for this platform.
+    // The backend decides, because it holds the pinned digests, so the
+    // interface never offers an installation that could never succeed and
+    // never hides one that can.
+    platformSupported: boolean;
 }
 
 interface InstallProgress {
@@ -262,14 +267,19 @@ export const PocketTts = () => {
                 )}
                 {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.installed && (
                     <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-missing">
-                        {t('Pocket TTS is not installed in Murmure. Install the official verified Windows runtime explicitly.')} {' '}
+                        {t('Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.')} {' '}
                         <a href="https://github.com/kyutai-labs/pocket-tts/releases/tag/v4.0.0" target="_blank" rel="noopener noreferrer" className="underline">
                             {t('Official Pocket TTS release')}
                         </a>
                     </p>
                 )}
 
-                {navigator.userAgent.includes('Windows') && runtimeStatus?.cpuCompatible && !runtimeStatus.verified && (
+                {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.platformSupported && (
+                    <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-unsupported">
+                        {t('The official Pocket TTS release has no build for this system, so speech is unavailable here.')}
+                    </p>
+                )}
+                {runtimeStatus?.platformSupported && runtimeStatus.cpuCompatible && !runtimeStatus.verified && (
                     <button
                         type="button"
                         disabled={installing || busy}
@@ -277,11 +287,20 @@ export const PocketTts = () => {
                         onClick={() => void installOfficialRuntime()}
                         data-testid="pocket-tts-install"
                     >
-                        {installing ? t('Installing verified Pocket TTSâ€¦') : t('Install official Pocket TTS for Windows')}
+                        {installing ? t('Installing verified Pocket TTSâ€¦') : t('Install the official Pocket TTS runtime')}
                     </button>
                 )}
                 {installing && (
                     <div role="status" aria-live="polite" data-testid="pocket-tts-install-progress" className="space-y-2">
+                        {installProgress?.totalBytes ? (
+                            <progress
+                                aria-label={t('Pocket TTS download progress')}
+                                className="h-2 w-full"
+                                max={installProgress.totalBytes}
+                                value={installProgress.receivedBytes}
+                                data-testid="pocket-tts-install-progress-bar"
+                            />
+                        ) : null}
                         <p className="text-sm">
                             {cancelRequested
                                 ? t('Cancelling Pocket TTS installationâ€¦')
