@@ -41,8 +41,9 @@ use tauri::{DeviceEventFilter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tts::preview::{
-    pocket_tts_cancel_install, pocket_tts_clear_model_cache, pocket_tts_install, pocket_tts_pause,
-    pocket_tts_preview, pocket_tts_resume, pocket_tts_speak, pocket_tts_status, pocket_tts_stop,
+    pocket_tts_cancel_install, pocket_tts_clear_model_cache, pocket_tts_install, pocket_tts_models,
+    pocket_tts_pause, pocket_tts_preview, pocket_tts_resume, pocket_tts_speak, pocket_tts_status,
+    pocket_tts_stop, pocket_tts_toggle_pause,
 };
 use wake_word::types::WakeWordState;
 
@@ -456,6 +457,8 @@ pub fn run() {
             set_cancel_shortcut,
             get_tts_stop_shortcut,
             set_tts_stop_shortcut,
+            get_tts_pause_shortcut,
+            set_tts_pause_shortcut,
             get_tts_read_selection_shortcut,
             set_tts_read_selection_shortcut,
             cancel_recording,
@@ -590,12 +593,14 @@ pub fn run() {
             pocket_tts_preview,
             pocket_tts_speak,
             pocket_tts_status,
+            pocket_tts_models,
             pocket_tts_clear_model_cache,
             pocket_tts_install,
             pocket_tts_cancel_install,
             pocket_tts_pause,
             pocket_tts_resume,
-            pocket_tts_stop
+            pocket_tts_stop,
+            pocket_tts_toggle_pause
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

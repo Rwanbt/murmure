@@ -30,11 +30,26 @@ pub(super) const WINDOWS_SIDECAR_SHA256: &str =
 // remains independent: never hold this lock while generating or playing audio.
 pub(crate) static MODEL_APPROVAL_LOCK: Mutex<()> = Mutex::new(());
 
+/// Model currently being synthesized, so its state can be reported.
+static ACTIVE_MODEL: Mutex<Option<String>> = Mutex::new(None);
+
+/// Clears the active model when the generation ends, on every path.
+struct ActiveModelGuard;
+
+impl Drop for ActiveModelGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_MODEL.lock() {
+            *active = None;
+        }
+    }
+}
+
 enum Request {
     Preview,
     Speak(String),
     Pause,
     Resume,
+    TogglePause,
     Stop,
 }
 
@@ -263,6 +278,44 @@ enum GenerationOutcome {
     Cancelled,
 }
 
+/// Apply exactly one transport action to the live playback engine.
+/// Keeping it separate from Tauri events allows deterministic unit tests with
+/// Rodio's in-memory queue, without assuming that CI has an audio device.
+#[derive(Debug, PartialEq, Eq)]
+enum PlayerTransition {
+    Paused,
+    Playing,
+    Stopped,
+    Noop,
+}
+
+fn apply_player_request(player: &rodio::Player, request: &Request) -> PlayerTransition {
+    match request {
+        Request::Pause => {
+            player.pause();
+            PlayerTransition::Paused
+        }
+        Request::Resume => {
+            player.play();
+            PlayerTransition::Playing
+        }
+        Request::TogglePause => {
+            if player.is_paused() {
+                player.play();
+                PlayerTransition::Playing
+            } else {
+                player.pause();
+                PlayerTransition::Paused
+            }
+        }
+        Request::Stop => {
+            player.stop();
+            PlayerTransition::Stopped
+        }
+        Request::Preview | Request::Speak(_) => PlayerTransition::Noop,
+    }
+}
+
 /// Run the Pocket TTS binary until it finishes, is stopped or reaches the
 /// generation bound, and report how it ended.
 ///
@@ -373,6 +426,10 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     } else {
         "french"
     };
+    if let Ok(mut active) = ACTIVE_MODEL.lock() {
+        *active = Some(model.to_string());
+    }
+    let _active_guard = ActiveModelGuard;
     // The first, user-approved invocation may download the public model.
     // Restrict the CLI to a dedicated app cache with no inherited HF login.
     let cache_dir = pocket_tts_model_cache(app)?;
@@ -407,20 +464,16 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
 
     while !player.empty() {
         match rx.recv_timeout(POLL_INTERVAL) {
-            Ok(Request::Pause) => {
-                player.pause();
-                emit(app, "paused", None);
-            }
-            Ok(Request::Resume) => {
-                player.play();
-                emit(app, "playing", None);
-            }
-            Ok(Request::Stop) => {
-                player.stop();
-                emit(app, "stopped", None);
-                return Ok(());
-            }
-            Ok(Request::Preview) | Ok(Request::Speak(_)) | Err(RecvTimeoutError::Timeout) => {}
+            Ok(action) => match apply_player_request(&player, &action) {
+                PlayerTransition::Paused => emit(app, "paused", None),
+                PlayerTransition::Playing => emit(app, "playing", None),
+                PlayerTransition::Stopped => {
+                    emit(app, "stopped", None);
+                    return Ok(());
+                }
+                PlayerTransition::Noop => {}
+            },
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 player.stop();
                 return Ok(());
@@ -498,6 +551,20 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
         return Err("Pocket TTS preview worker is unavailable".to_string());
     }
     Ok(())
+}
+
+/// Describe the models Murmure supports and their local state.
+///
+/// The catalog is exact and the local state is only reported when it can be
+/// established: a model is never presented as ready when its presence in
+/// the cache is ambiguous.
+#[tauri::command]
+pub fn pocket_tts_models(
+    app: AppHandle,
+) -> Result<Vec<super::models::PocketTtsModelStatus>, String> {
+    let cache = pocket_tts_model_cache(&app)?;
+    let in_use = ACTIVE_MODEL.lock().ok().and_then(|active| active.clone());
+    Ok(super::models::model_statuses(&cache, in_use.as_deref()))
 }
 
 /// Remove only Murmure's isolated Pocket TTS model cache, never the user's
@@ -629,6 +696,11 @@ pub fn pocket_tts_pause(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn pocket_tts_resume(app: AppHandle) -> Result<(), String> {
     send(&app, Request::Resume)
+}
+
+#[tauri::command]
+pub fn pocket_tts_toggle_pause(app: AppHandle) -> Result<(), String> {
+    send(&app, Request::TogglePause)
 }
 
 #[tauri::command]
@@ -938,6 +1010,204 @@ mod tests {
             outcome.is_err(),
             "a runtime that exits with a failure must be reported as a generation failure"
         );
+    }
+
+    #[test]
+    fn actual_audio_queue_obeys_pause_resume_and_stop_without_a_sound_card() {
+        use rodio::buffer::SamplesBuffer;
+        use std::num::{NonZeroU16, NonZeroU32};
+
+        // Rodio v0.22 samples control flags through periodic_access every 5 ms,
+        // not every sample. At 24 kHz that is about 120 frames. Verify that
+        // pause/resume/stop take effect within four callback intervals, rather
+        // than claiming an impossible sample-exact transition.
+        const MAX_CONTROL_LATENCY_FRAMES: usize = 480;
+        let (player, mut output) = rodio::Player::new();
+        let mono = NonZeroU16::new(1).unwrap();
+        let sample_rate = NonZeroU32::new(24_000).unwrap();
+        player.append(SamplesBuffer::new(mono, sample_rate, vec![0.5_f32; 4_096]));
+        assert_eq!(output.next(), Some(0.5));
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Pause),
+            PlayerTransition::Paused
+        );
+        assert!(player.is_paused());
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            "Rodio did not silence playback within 20 ms after Pause"
+        );
+        for _ in 0..8 {
+            assert_eq!(output.next(), Some(0.0), "paused playback leaked samples");
+        }
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Resume),
+            PlayerTransition::Playing
+        );
+        assert!(!player.is_paused());
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.5)),
+            "Rodio did not resume within 20 ms"
+        );
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Stop),
+            PlayerTransition::Stopped
+        );
+        assert!(
+            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            "Rodio did not silence playback within 20 ms after Stop"
+        );
+        assert!(player.empty(), "Stop did not empty the playback queue");
+    }
+
+    /// Runs only in the dedicated Windows job after the pinned Kyutai
+    /// binary has generated a French WAV. Not part of ordinary unit tests:
+    #[test]
+    fn toggle_pause_switches_state_and_preserves_the_playback_queue() {
+        use rodio::buffer::SamplesBuffer;
+        use std::num::{NonZeroU16, NonZeroU32};
+        let (player, mut output) = rodio::Player::new();
+        player.append(SamplesBuffer::new(
+            NonZeroU16::new(1).unwrap(),
+            NonZeroU32::new(24_000).unwrap(),
+            vec![0.5_f32; 4096],
+        ));
+        assert_eq!(output.next(), Some(0.5));
+        assert_eq!(
+            apply_player_request(&player, &Request::TogglePause),
+            PlayerTransition::Paused
+        );
+        assert!(player.is_paused());
+        assert!((0..480).any(|_| output.next() == Some(0.0)));
+        assert!(!player.empty(), "toggle pause must preserve queued audio");
+        assert_eq!(
+            apply_player_request(&player, &Request::TogglePause),
+            PlayerTransition::Playing
+        );
+        assert!(!player.is_paused());
+        assert!((0..480).any(|_| output.next() == Some(0.5)));
+        assert_eq!(
+            apply_player_request(&player, &Request::Stop),
+            PlayerTransition::Stopped
+        );
+    }
+
+    /// the fixture is not checked in, and no personal voice is required.
+    #[test]
+    #[ignore = "requires a real generated French WAV from the pinned Kyutai Windows CLI"]
+    fn official_french_wav_decodes_and_obeys_transport() {
+        use rodio::Source;
+
+        let path = std::env::var_os("MURMURE_TTS_FIXTURE_WAV")
+            .expect("MURMURE_TTS_FIXTURE_WAV must point to a generated French WAV");
+        let file = File::open(path).expect("cannot read the official French WAV fixture");
+        let decoder = rodio::Decoder::new(file).expect("Rodio could not decode the official WAV");
+        assert_eq!(decoder.channels().get(), 1);
+        assert_eq!(decoder.sample_rate().get(), 24_000);
+
+        let (player, mut source) = rodio::Player::new();
+        player.append(decoder);
+
+        // Inspect the actual decoded sample stream (not just the RIFF header).
+        assert!(
+            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
+            "no audible signal detected in the first second of the French WAV"
+        );
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Pause),
+            PlayerTransition::Paused
+        );
+        // A real WAV may naturally contain isolated zero-valued samples
+        // while Rodio's 5 ms control callback has not yet applied Pause.
+        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz)
+        // within a 20 ms bound. Isolated zero crossings cannot pass.
+        let mut silent_frames = 0;
+        for _ in 0..480 {
+            silent_frames = if source.next() == Some(0.0) {
+                silent_frames + 1
+            } else {
+                0
+            };
+            if silent_frames >= 120 {
+                break;
+            }
+        }
+        assert_eq!(
+            silent_frames, 120,
+            "real WAV playback was not stably silent within 20 ms"
+        );
+        for _ in 0..120 {
+            assert_eq!(
+                source.next(),
+                Some(0.0),
+                "paused playback emitted a non-silent sample"
+            );
+        }
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Resume),
+            PlayerTransition::Playing
+        );
+        assert!(
+            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
+            "Rodio did not resume the real French WAV within one second"
+        );
+
+        assert_eq!(
+            apply_player_request(&player, &Request::Stop),
+            PlayerTransition::Stopped
+        );
+        let mut silent_after_stop = 0;
+        for _ in 0..480 {
+            silent_after_stop = if source.next() == Some(0.0) {
+                silent_after_stop + 1
+            } else {
+                0
+            };
+            if silent_after_stop >= 120 {
+                break;
+            }
+        }
+        assert_eq!(
+            silent_after_stop, 120,
+            "real WAV playback was not stably silent within 20 ms of Stop"
+        );
+        for _ in 0..120 {
+            assert_eq!(
+                source.next(),
+                Some(0.0),
+                "stopped playback emitted a non-silent sample"
+            );
+        }
+        assert!(
+            player.empty(),
+            "real WAV player still has queued audio after Stop"
+        );
+    }
+
+    #[test]
+    fn spurious_generate_command_does_not_interrupt_existing_player() {
+        use rodio::buffer::SamplesBuffer;
+        use std::num::{NonZeroU16, NonZeroU32};
+
+        let (player, mut output) = rodio::Player::new();
+        player.append(SamplesBuffer::new(
+            NonZeroU16::new(1).unwrap(),
+            NonZeroU32::new(24_000).unwrap(),
+            vec![0.25, -0.25, 0.2],
+        ));
+        assert_eq!(
+            apply_player_request(&player, &Request::Preview),
+            PlayerTransition::Noop
+        );
+        assert_eq!(
+            apply_player_request(&player, &Request::Speak("unused".into())),
+            PlayerTransition::Noop
+        );
+        assert_eq!(output.next(), Some(0.25));
     }
 
     #[test]

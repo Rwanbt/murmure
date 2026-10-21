@@ -124,6 +124,11 @@ export const SHORTCUT_CONFIGS = {
         getCommand: 'get_tts_read_selection_shortcut',
         setCommand: 'set_tts_read_selection_shortcut',
     },
+    ttsPause: {
+        defaultShortcut: 'ctrl+alt+p',
+        getCommand: 'get_tts_pause_shortcut',
+        setCommand: 'set_tts_pause_shortcut',
+    },
     ttsStop: {
         defaultShortcut: 'ctrl+alt+k',
         getCommand: 'get_tts_stop_shortcut',

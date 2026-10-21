@@ -711,6 +711,9 @@
     "French — efficient CPU model": "Français — modèle économe sur CPU",
     "French — 24 layers (larger experimental model)": "Français — 24 couches (modèle expérimental plus volumineux)",
     "Playback volume": "Volume de lecture",
+    "Ready, usable offline": "Prêt, utilisable hors ligne",
+    "In use": "En cours d'utilisation",
+    "Not downloaded yet": "Pas encore téléchargé",
     "Changes apply to the next playback. Larger models may require more RAM and a separate download.": "Ces réglages s’appliquent à la prochaine lecture. Les modèles plus volumineux peuvent nécessiter davantage de mémoire et un téléchargement distinct.",
     "Unable to load TTS settings.": "Impossible de charger les réglages de synthèse vocale.",
     "Unable to detect Pocket TTS runtime.": "Impossible de détecter le moteur Pocket TTS.",
@@ -736,5 +739,7 @@
     "Cancelling Pocket TTS installation…": "Annulation de l’installation Pocket TTS…",
     "Downloading Pocket TTS": "Téléchargement de Pocket TTS",
     "bytes received": "octets reçus",
-    "Cancel installation": "Annuler l’installation"
+    "Cancel installation": "Annuler l’installation",
+    "Pause or resume speech": "Mettre la voix en pause ou reprendre",
+    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre."
 }

@@ -14,7 +14,8 @@
 param(
     [Parameter(Mandatory=$true)]
     [string] $Destination,
-    [switch] $GenerateFrench
+    [switch] $GenerateFrench,
+    [switch] $KeepGeneratedWav
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,7 +111,9 @@ if ($GenerateFrench) {
     try {
         $wave = Test-PocketTtsWave -Path $wav -MinimumSeconds 0.5
     } finally {
-        Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+        if (-not $KeepGeneratedWav) {
+            Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+        }
     }
     $duration = [string]::Format(
         [System.Globalization.CultureInfo]::InvariantCulture, '{0:F2}', $wave.DurationSeconds)
