@@ -7,9 +7,10 @@ log. A log file is written to disk, travels into bug reports and outlives the
 audio it came from, so a single `debug!` that interpolates the wrong variable
 undoes the property silently.
 
-The check is deliberately narrow: it looks at the arguments of the logging
-macros and refuses a bare identifier whose name says it holds user content.
-`transcription.chars().count()` is fine, because the count is not the text.
+The check reads each logging macro as a whole statement, across line breaks
+and around string literals, then looks at its arguments. It refuses a bare
+identifier whose name says it holds user content; `transcription.chars()
+.count()` is fine, because the count is not the text.
 
 Usage: check-private-logs.py --root src-tauri/src
 """
@@ -21,11 +22,7 @@ import sys
 
 LOGGING = ("debug", "info", "warn", "error", "trace")
 
-# A statement like `debug!("...", transcription)` leaks the text.
-PATTERN = re.compile(
-    r"\b(?:" + "|".join(LOGGING) + r")!\s*\((.*)\)\s*;?\s*$",
-    re.DOTALL,
-)
+OPENING = re.compile(r"\b(" + "|".join(LOGGING) + r")!\s*\(")
 
 # Names that hold what the user said, typed or selected.
 SENSITIVE = {
@@ -43,6 +40,34 @@ SENSITIVE = {
 
 # An argument that carries the value, not a property of it.
 BARE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?:\.clone\(\)|\.to_string\(\))?$")
+
+
+def statements(source: str):
+    """Yield (offset, body) for every logging macro call in the source."""
+    for match in OPENING.finditer(source):
+        start = match.end()
+        depth = 1
+        index = start
+        in_string = False
+        escaped = False
+        while index < len(source) and depth > 0:
+            character = source[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"':
+                    in_string = False
+            elif character == '"':
+                in_string = True
+            elif character == "(":
+                depth += 1
+            elif character == ")":
+                depth -= 1
+            index += 1
+        if depth == 0:
+            yield match.start(), source[start : index - 1]
 
 
 def arguments_of(body: str) -> list[str]:
@@ -82,21 +107,18 @@ def arguments_of(body: str) -> list[str]:
 
 
 def findings(path: pathlib.Path) -> list[tuple[int, str]]:
+    source = path.read_text(encoding="utf-8", errors="replace")
     problems = []
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    for number, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("//"):
+    for offset, body in statements(source):
+        line_number = source.count("\n", 0, offset) + 1
+        line_start = source.rfind("\n", 0, offset) + 1
+        if source[line_start:offset].strip().startswith("//"):
             continue
-        match = PATTERN.search(stripped)
-        if not match:
-            continue
-        body = match.group(1)
         # The first argument is the format string; only the rest can leak.
         for argument in arguments_of(body)[1:]:
             name = BARE.match(argument.strip())
             if name and name.group(1) in SENSITIVE:
-                problems.append((number, argument.strip()))
+                problems.append((line_number, argument.strip()))
     return problems
 
 

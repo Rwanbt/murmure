@@ -250,9 +250,12 @@ fn try_handle_wake_word(
         if matches_wake_word(normalized, &entry.word) {
             match entry.action {
                 WakeWordAction::Record(mode) if !is_recording => {
+                    // The phrase itself is what the user said; only its size is logged.
                     info!(
-                        "Wake word detected ({}): \"{}\" -> mode {:?}",
-                        source, text, mode
+                        "Wake word detected ({}): {} characters -> mode {:?}",
+                        source,
+                        text.chars().count(),
+                        mode
                     );
                     if mode == RecordingMode::Command
                         && crate::shortcuts::shortcuts::ensure_command_ready(app, true).is_err()
@@ -264,9 +267,12 @@ fn try_handle_wake_word(
                     return true;
                 }
                 WakeWordAction::RecordLlmMode(index) if !is_recording => {
+                    // The phrase itself is what the user said; only its size is logged.
                     info!(
-                        "Wake word detected ({}): \"{}\" -> LLM mode {}",
-                        source, text, index
+                        "Wake word detected ({}): {} characters -> LLM mode {}",
+                        source,
+                        text.chars().count(),
+                        index
                     );
                     if crate::shortcuts::shortcuts::ensure_llm_mode_ready(app, index, true).is_err()
                     {
@@ -434,10 +440,11 @@ fn listener_loop(
                 if let Some((text, normalized)) =
                     resample_and_transcribe(app, &segment, sample_rate)
                 {
+                    // The transcription is what the user said; only its size is logged.
                     trace!(
-                        "Wake word segment transcription: \"{}\" (normalized: \"{}\")",
-                        text,
-                        normalized
+                        "Wake word segment transcription: {} characters ({} normalized)",
+                        text.chars().count(),
+                        normalized.chars().count()
                     );
                     try_handle_wake_word(app, &text, &normalized, entries, "segment");
                 }
@@ -490,10 +497,11 @@ fn listener_loop(
                         if let Some((text, normalized)) =
                             resample_and_transcribe(app, &partial_buf, sample_rate)
                         {
+                            // The transcription is what the user said; only its size is logged.
                             trace!(
-                                "Wake word early check: \"{}\" (normalized: \"{}\")",
-                                text,
-                                normalized
+                                "Wake word early check: {} characters ({} normalized)",
+                                text.chars().count(),
+                                normalized.chars().count()
                             );
                             if try_handle_wake_word(app, &text, &normalized, entries, "early") {
                                 // Wake word detected early, drain pending
