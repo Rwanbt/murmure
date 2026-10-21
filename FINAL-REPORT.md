@@ -41,11 +41,16 @@ Every one of these was a real behaviour defect, not a style issue.
 | The frontend dependency tree had never been audited | **High** | New `osv.dev` audit found 5 advisories |
 | "Clear the model cache" deleted the installed runtime | **Critical** | Tauri's cache and local-data roots are the same directory on Windows |
 | A partially downloaded or unreadable model was presented as "Ready, usable offline" | **High** | The state followed the presence of the directory; an interrupted Hugging Face download leaves a directory with an `<digest>.incomplete` blob, and the first synthesis then failed in front of the user |
-| The dictated words were written to the log | **High** | Ten `debug!`, `info!` and `trace!` statements printed the transcription or the recognized phrase. A log file outlives the audio it came from and travels into bug reports | `bb1d067`, `0c0da20` and `eb47928`, and `scripts/check-private-logs.py` now refuses the pattern in `Check Guidelines` |
+| The dictated words were written to the log | **High** | Ten `debug!`, `info!` and `trace!` statements printed the transcription or the recognized phrase; a log file outlives the audio it came from and travels into bug reports. Fixed in `bb1d067`, `0c0da20` and `eb47928`, and `scripts/check-private-logs.py` refuses the pattern in `Check Guidelines` |
 | Two tests were ignored with a reason and had no runner at all | **High** | Neither installer test was ever handed the archive it needs, so both had been skipped silently since they were written |
 | A rapid second trigger discarded the running recording | **High** | The wake word path lacked the guard the shortcuts have |
 | A hidden but focusable file input trapped keyboard focus | **Medium** | New screen audit |
 | The install progress was a sentence, not a value | **Medium** | Static review |
+| The packaged application shipped without its ONNX Runtime, so the speech engine could not load and every dictation failed | **Critical** | The installed log repeated `the ONNX Runtime 1.23.2 (onnxruntime.dll) is not installed` every second, while the packaging job does copy the library into the resources and a local build did not. `resources/onnxruntime/` now holds it and is ignored by git |
+| The packaged validation never checked that the engine loads | **High** | It watched the process, the cache and the leftovers, so a package that starts and cannot transcribe passed. It now reads the log and refuses `ONNX Runtime .* is not installed` |
+| A fully downloaded model was reported as not downloaded | **High** | The Hugging Face cache holds three snapshots (weights, tokenizer, voice) and the status required exactly one, so 208.9 MB of weights read as absent. The snapshot carrying `.safetensors` is now the model, and the real layout has a test |
+| Selection reading refused silently | **Medium** | The refusal went to the speech screen, which the user is not looking at when pressing the shortcut from another application. It is logged now, and the capture itself is proven with Notepad and `Ctrl+Alt+L` |
+| Eight interface strings carried mojibake and four had no French translation | **Medium** | `pocket-tts.tsx` held the cp1252 reading of UTF-8 bytes, so the screen showed `French a-EUR- efficient CPU model` and the catalogue never matched. Repaired, and all 55 keys of the screen resolve in French |
 
 Four claims made earlier in this effort were **wrong and were corrected**:
 1. "No official Pocket TTS build exists for Linux or macOS." It does: release

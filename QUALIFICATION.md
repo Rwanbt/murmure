@@ -212,6 +212,11 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | A real-audio job failed on a Hugging Face rate limit, on a commit that only changed markdown | **Medium** | run `39604118615`: `Rate limited: We had to rate limit your IP (13.105.117.241)` in `Pocket TTS real French WAV on macOS`, while the same job had passed on the previous commit | PR #54 `017ee8f` is re-run to confirm the flake, and the three jobs that download the French weights now share one `actions/cache` entry for `~/.cache/huggingface`, with a three-attempt retry around the generation. The cache makes the download happen once; the retry covers the first run and a cache eviction, in the same spirit as the Clippy gate that already retries a dropped download |
 | The transcribed words were written to the log | **High** | ten statements in total: `debug!("Transcription written to clipboard {}", transcription)`, its "last transcription" twin, `debug!("SmartMic transcription result: {}", text)`, the three wake word handlers logging the recognized phrase on one line, and four more that spread the same phrase over several lines. A log file is written to disk, copied into bug reports and kept after the audio is deleted, so this is a privacy defect, not a verbosity defect | PR #54 `bb1d067`, `0c0da20` and `eb47928`: each statement logs a length instead. The last four were found by the gate, not by reading, and only after the gate was rewritten to read a macro as a whole statement instead of a line. `scripts/check-private-logs.py` refuses a logging macro whose argument is a bare identifier named `text`, `transcription`, `prompt`, `selection`, `content`, `speech`, `dictation` or `words`; against the code before the fix it reports ten, against the tree it reports none, and a synthetic multi-line case that the line-based version missed is reported. It runs in `Check Guidelines`, and job `119235736612` prints `PASS: 143 Rust files, no log statement carries user content`. The HTTP API server already logged only an identifier and a duration, and the CLI `transcribe` command prints the transcription on purpose, as its output |
 | An ignored test with a reason and no runner | **High** | `official_archive_extracts_untampered_binary_and_refuses_overwrite` and `cancelled_install_never_publishes_an_executable` need `MURMURE_TTS_OFFICIAL_ARCHIVE`, and no job ever set it, so neither had ever run anywhere | PR #54 `caf5b75`: the round-trip job already downloads and digest-checks that archive, so it now hands the bytes to both tests on one thread, and fails unless they report `2 passed` |
+| The packaged application shipped without `resources/onnxruntime/onnxruntime.dll`, so the speech engine could not load and every dictation failed | **Critical** | the log of the installed application repeats `the ONNX Runtime 1.23.2 (onnxruntime.dll) is not installed` every second, and no `onnxruntime.dll` exists next to the executable or in its resources. The packaging job copies the library into the resources; a local `pnpm tauri build` does not, and nothing said so | the library is placed in the bundled resources, `resources/onnxruntime/` is ignored by git, and `scripts/validate-packaged-windows.ps1` now reads the log and fails unless the engine reports `Transcription engine initialized and ready` |
+| The packaged validation watched the process but never the engine | **High** | `validate-packaged-windows.ps1` checked that the process survived twelve seconds, that no cache was created and that nothing was left behind. A package that starts and cannot transcribe passed all of it | the script now fails on `ONNX Runtime .* is not installed` and on a missing readiness line, so the next package that ships without its runtime fails in CI instead of on the user's machine |
+| A fully downloaded model was reported as not downloaded | **High** | the Hugging Face cache holds one snapshot per artifact: the weights, the tokenizer and the voice. The status required exactly one snapshot, so the real cache with three read as `not_installed` while 208.9 MB of weights sat on disk. The first real use of the product showed it | the snapshot that carries `.safetensors` files is the model, and the largest one when there are several; a test covers the real three-snapshot layout |
+| Selection reading refused without telling anyone | **Medium** | `speak_selection` emits `pocket-tts-selection-error` to the speech screen. The user presses `Ctrl+Alt+L` from another application and is not looking at that screen, so a refusal looked exactly like a shortcut that does nothing | the refusal is logged, and the capture itself was proven by selecting a sentence in Notepad and pressing the binding: a `pocket-tts` process and a temporary wave appeared |
+| Eight interface strings carried mojibake | **Medium** | `pocket-tts.tsx` held `\u00e2\u20ac\u201d` instead of an em dash and `\u00e2\u20ac\u00a6` instead of an ellipsis, the cp1252 reading of three UTF-8 bytes. The screen showed `French a-EUR- efficient CPU model`, and the French catalogue never matched those keys | the eight sequences are repaired, and the four keys that had no translation at all are added; all 55 keys of the speech screen now resolve in French |
 
 ---
 
@@ -280,39 +285,35 @@ Windows machine with a visible desktop, a speaker and a microphone.
 
 ### 6.0 Executed on a real Windows desktop
 
-Steps 1, 11 and the whole install cycle were executed on the project owner's
-machine, so they are evidence rather than protocol.
+The whole install cycle and part of the interface journey were executed on the
+project owner's machine, so they are evidence rather than protocol. The
+interface was driven through Windows UI Automation, which reaches the WebView2
+tree, so the clicks below are real clicks on the real screen.
 
-- Build: `pnpm build` then `pnpm tauri build` on Windows with the pinned Rust
-  toolchain. The release profile finished in 19 min 34 s and produced
-  `target/release/murmure.exe`, 27.7 MB. The NSIS bundle
-  `murmure_2.0.3_x64-setup.exe` is 590 MB, because the speech model travels
-  inside it.
-- Clean install: the target directory, the registry key and the installed
-  program were absent before the run. `murmure_2.0.3_x64-setup.exe /S`
-  exited 0 after 61 s and installed 16 files, 666.4 MB, in
-  `%LOCALAPPDATA%\murmure`, with `murmure.exe` and `uninstall.exe` present.
-  The uninstall entry registered `murmure`, version 2.0.3.
-- Launch of the installed application: the executable opened a window titled
-  `Murmure`, 39 threads, 50 MB of working set, and it was still alive after
-  12 s. It was then stopped, and `Get-Process murmure` returned zero entries.
-- Uninstall: `uninstall.exe /S` exited 0; the install directory and the
-  uninstall registry key were both gone afterwards. No orphan process
-  remained. A Start Menu entry, a desktop shortcut and a process were all
-  absent too, so nothing of the application survived the uninstall except the
-  settings directory named below, which is deliberate.
-- Persisted data: a first start creates `%APPDATA%\com.al1x-ai.murmure` with
-  `settings.json` (59 keys: shortcuts, modes, text to speech preferences),
-  `dictionary.json`, `formatting_rules.json`, `llm_connect.json` and
-  `stats_aggregated.json` (five aggregate counters: words per minute sums,
-  words this month, last reset, total audio bytes). No recording, no
-  transcript and no audio file is written there, and the uninstaller leaves
-  the directory in place, so a reinstall keeps the user's settings. An
-  earlier claim in this document said that a first start wrote nothing: it
-  was wrong, because the paths checked were `com.murmure.app` and `murmure`
-  instead of the identifier the application actually uses.
-- Not executed here: steps 2 to 10 and 12 to 13, which need a human to click
-  through the interface.
+| Step | Status | What happened |
+| --- | --- | --- |
+| 1. Build and install | **PROVEN** | NSIS bundle 590 MB, silent install 61 s, 16 files, 666.4 MB, registry entry `murmure 2.0.3`, silent uninstall removing the directory and the key |
+| 2. Open Extensions → Text to Speech | **PROVEN** | the submenu was expanded and the screen opened; its whole tree was read |
+| 3. No CPU compatibility notice on an AVX2 machine | **PROVEN** | no such notice on the screen |
+| 4. Runtime reported as not installed, install button offering the pinned release | **PROVEN** | "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié." with the button and the link to the official release |
+| 5. Install the runtime, watch progress, cancel, reinstall | **PARTIAL** | installed from the interface and the executable landed in `%LOCALAPPDATA%\com.al1x-ai.murmure\pocket-tts\bin`, 21.1 MB. The cancel path was not exercised from the interface; it is covered by `cancelled_install_never_publishes_an_executable` in CI |
+| 6. No model cache before consent | **PROVEN** | the model list read "Pas encore téléchargé" and no cache directory existed |
+| 7. Grant consent, run a French preview, audio produced | **PROVEN** | consent toggled on, the buttons enabled, the preview started, the French weights downloaded (432.7 MB, `model.safetensors` 208.9 MB plus tokenizer and the `estelle` voice) and the run completed with the temporary wave cleaned up |
+| 8. Pause, resume and stop from the interface | **PARTIAL** | during playback the screen showed `Pause` and `Arrêter` enabled and `Reprendre` disabled, which is the expected transport state. The buttons were not clicked, and the global bindings were not pressed |
+| 9. Change the volume and hear it on the next playback | **NOT EXECUTED** | the slider reads 80 % and is wired to `set_tts_volume`, applied at the next playback; nobody moved it |
+| 10. Read a selection with the global shortcut | **PROVEN** | a Notepad window held a French sentence, select all, then `Ctrl+Alt+L`: a `pocket-tts` process and a temporary wave appeared, so the selection was captured and synthesised |
+| 11. Close the window, stay in the tray, quit from the tray | **PARTIAL** | the window closes to the tray and the process stays alive, confirmed twice; quitting from the tray menu was not exercised |
+| 12. Restart offline and reuse the cache | **NOT EXECUTED** | the weights are cached, so the next start needs no network, but the restart with the network disabled was not performed |
+| 13. Delete the model cache and keep the runtime | **NOT EXECUTED** | covered by `clearing_the_model_cache_never_removes_the_installed_runtime` in CI, not by a click |
+
+What the interface run proved beyond the checklist: the packaged application
+shipped **without** `resources/onnxruntime/onnxruntime.dll`, so the speech
+engine could not load and every dictation failed with `The ONNX Runtime is not
+installed`. The packaging job already copies the library there; the local
+build did not, and the validation script only watched the process, so a
+package that cannot transcribe passed. Both are fixed.
+
+
 
 1. Build and install the packaged application
    (`pnpm tauri build --bundles nsis`, then run the NSIS installer).
