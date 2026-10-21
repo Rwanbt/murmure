@@ -97,9 +97,8 @@ fn real_french_speech_is_transcribed() {
         "the resampled recording must not be empty"
     );
 
-    let mut engine =
-        crate::engine::engine::ParakeetEngine::load_int8(Path::new(&model_dir), tokenizer)
-            .expect("the pinned Parakeet model must load");
+    let mut engine = crate::engine::ParakeetEngine::load_int8(Path::new(&model_dir), tokenizer)
+        .expect("the pinned Parakeet model must load");
     let result = engine
         .transcribe_samples(resampled, None)
         .expect("the transcription must succeed");
