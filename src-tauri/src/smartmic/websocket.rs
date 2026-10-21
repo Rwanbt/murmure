@@ -480,7 +480,12 @@ fn process_recording(
     }
 
     let text = parts.join(" ");
-    debug!("SmartMic transcription result: {}", text);
+    // The result itself is the user's dictation; only its size is logged.
+    debug!(
+        "SmartMic transcription result: {} characters in {} part(s)",
+        text.chars().count(),
+        parts.len()
+    );
 
     let text = if let SmartMicMode::Llm(_) = &mode {
         match crate::audio::pipeline::apply_llm_to_full_text(&app, text.clone()) {
