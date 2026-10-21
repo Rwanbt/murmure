@@ -299,12 +299,18 @@ tree, so the clicks below are real clicks on the real screen.
 | 5. Install the runtime, watch progress, cancel, reinstall | **PARTIAL** | installed from the interface and the executable landed in `%LOCALAPPDATA%\com.al1x-ai.murmure\pocket-tts\bin`, 21.1 MB. The cancel path was not exercised from the interface; it is covered by `cancelled_install_never_publishes_an_executable` in CI |
 | 6. No model cache before consent | **PROVEN** | the model list read "Pas encore téléchargé" and no cache directory existed |
 | 7. Grant consent, run a French preview, audio produced | **PROVEN** | consent toggled on, the buttons enabled, the preview started, the French weights downloaded (432.7 MB, `model.safetensors` 208.9 MB plus tokenizer and the `estelle` voice) and the run completed with the temporary wave cleaned up |
-| 8. Pause, resume and stop from the interface | **PARTIAL** | during playback the screen showed `Pause` and `Arrêter` enabled and `Reprendre` disabled, which is the expected transport state. The buttons were not clicked, and the global bindings were not pressed |
+| 8. Pause, resume and stop from the interface | **PARTIAL** | the play button is wired: invoking it from the interface started a real generation. During playback the screen showed `Pause` and `Arrêter` enabled with `Reprendre` disabled, which is the expected transport state. The three buttons were not clicked, and the bindings were not pressed |
 | 9. Change the volume and hear it on the next playback | **NOT EXECUTED** | the slider reads 80 % and is wired to `set_tts_volume`, applied at the next playback; nobody moved it |
 | 10. Read a selection with the global shortcut | **PROVEN** | a Notepad window held a French sentence, select all, then `Ctrl+Alt+L`: a `pocket-tts` process and a temporary wave appeared, so the selection was captured and synthesised |
 | 11. Close the window, stay in the tray, quit from the tray | **PARTIAL** | the window closes to the tray and the process stays alive, confirmed twice; quitting from the tray menu was not exercised |
 | 12. Restart offline and reuse the cache | **NOT EXECUTED** | the weights are cached, so the next start needs no network, but the restart with the network disabled was not performed |
 | 13. Delete the model cache and keep the runtime | **NOT EXECUTED** | covered by `clearing_the_model_cache_never_removes_the_installed_runtime` in CI, not by a click |
+
+The shortcut page was opened and read: it lists `Ctrl + Alt + K` for stopping
+the speech, `Ctrl + Alt + P` for pausing and resuming it, and `Ctrl + Alt + L`
+for reading the selection, each as an editable button with its own explanation.
+The bindings are therefore reachable and changeable from the interface, not
+only stored in a file.
 
 What the interface run proved beyond the checklist: the packaged application
 shipped **without** `resources/onnxruntime/onnxruntime.dll`, so the speech
