@@ -16,7 +16,7 @@ this report is the summary and the verdict.
 | Deterministic negative tests for the audio contract | **11 checks**, generated fixtures, no network | `scripts/test-pocket-tts-wave-posix.py`, `scripts/test-pocket-tts-wave-validator.ps1` |
 | Offline scenario | **Demonstrated** | "Pocket TTS cached French WAV without network" job |
 | Verified runtime installation | **Demonstrated**, digest checked before and after extraction, atomic publication | `src-tauri/src/tts/install_windows.rs`, `install_posix.rs` |
-| Packaged Windows application | **Built, installed, launched, uninstalled, no orphan process, no temporary file** | `scripts/validate-packaged-windows.ps1`, "Packaged Windows application" job |
+| Packaged Windows application | **Built, installed, launched, uninstalled, no orphan process, no temporary file** | `scripts/validate-packaged-windows.ps1`, "Packaged Windows application" job — run `39584806493` is green on all sixteen jobs |
 | Safe cache removal | **Demonstrated**, junction/reparse refused, runtime never deleted | `src-tauri/src/tts/preview.rs`, 6 tests |
 | Rust dependency audit | **Enforced**, 8 advisories accepted with a written reason | "Dependency audit" job |
 | JavaScript dependency audit | **Enforced**, 5 advisories found, 3 closed, 2 accepted with a written reason | `scripts/audit-js-dependencies.py`, job `39584806493` |
