@@ -14,6 +14,11 @@ jobs:
             # silently drop the interface below them.
             - name: Measure the contrast of the interface tokens
               run: python3 scripts/check-contrast.py --stylesheet src/tailwind.css
+            # Reading a screen by eye does not scale and cannot be re-run.
+            # This is the part of WCAG 2.2 that a compiler does not catch:
+            # keyboard reachability, accessible names and focus order.
+            - name: Audit the screens for keyboard, naming and focus findings
+              run: python3 scripts/audit-accessibility.py --root src/features
 
             - uses: actions/setup-node@v4
               with:
