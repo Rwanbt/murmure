@@ -27,6 +27,12 @@ jobs:
             - name: Verify that every ignored test is registered
               run: python3 scripts/check-ignored-tests.py --root src-tauri/src
 
+            # A log file is written to disk, copied into bug reports and kept
+            # after the audio is deleted, so one debug statement that
+            # interpolates the wrong variable undoes the privacy rule silently.
+            - name: Verify that no log statement carries what the user said
+              run: python3 scripts/check-private-logs.py --root src-tauri/src
+
             - uses: actions/setup-node@v4
               with:
                   node-version: lts/*

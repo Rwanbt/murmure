@@ -281,19 +281,34 @@ fn try_handle_wake_word(
                     return true;
                 }
                 WakeWordAction::Cancel if is_recording => {
-                    info!("Cancel wake word detected ({}): \"{}\"", source, text);
+                    // The recognized phrase is what the user said; only its size is logged.
+                    info!(
+                        "Cancel wake word detected ({}): {} characters",
+                        source,
+                        text.chars().count()
+                    );
                     let _ = app.emit("wake-word-detected", ());
                     trigger_cancel(app);
                     return true;
                 }
                 WakeWordAction::Validate if is_recording => {
-                    info!("Validate wake word detected ({}): \"{}\"", source, text);
+                    // The recognized phrase is what the user said; only its size is logged.
+                    info!(
+                        "Validate wake word detected ({}): {} characters",
+                        source,
+                        text.chars().count()
+                    );
                     let _ = app.emit("wake-word-detected", ());
                     trigger_validate(app);
                     return true;
                 }
                 WakeWordAction::Submit if is_recording => {
-                    info!("Submit wake word detected ({}): \"{}\"", source, text);
+                    // The recognized phrase is what the user said; only its size is logged.
+                    info!(
+                        "Submit wake word detected ({}): {} characters",
+                        source,
+                        text.chars().count()
+                    );
                     let _ = app.emit("wake-word-detected", ());
                     trigger_submit(app);
                     return true;
