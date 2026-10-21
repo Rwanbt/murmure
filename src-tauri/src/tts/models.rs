@@ -154,11 +154,10 @@ fn weights_are_complete(weights: &Path) -> bool {
         let Ok(metadata) = std::fs::metadata(&path) else {
             return false;
         };
-        if metadata.is_dir() {
-            if !weights_are_complete(&path) {
-                return false;
-            }
-        } else if metadata.len() == 0 {
+        if metadata.is_dir() && !weights_are_complete(&path) {
+            return false;
+        }
+        if !metadata.is_dir() && metadata.len() == 0 {
             return false;
         }
         found = true;
