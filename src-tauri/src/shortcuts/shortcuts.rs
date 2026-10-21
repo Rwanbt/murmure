@@ -1,4 +1,4 @@
-use crate::audio::types::RecordingMode;
+use crate::audio::types::{RecordingMode, RecordingTrigger};
 use crate::overlay::overlay::notify_overlay_error;
 use crate::shortcuts::modifiers::wait_for_modifiers_released;
 use crate::shortcuts::registry::ShortcutRegistryState;
@@ -116,7 +116,13 @@ pub fn handle_shortcut_event(
                 mode,
                 event_type,
                 &shortcut_state,
-                move || crate::audio::record_audio(&app_for_fn, RecordingMode::Standard),
+                move || {
+                    crate::audio::record_audio(
+                        &app_for_fn,
+                        RecordingMode::Standard,
+                        RecordingTrigger::Keyboard,
+                    );
+                },
             );
         }
         ShortcutAction::StartRecordingCommand => {
@@ -132,7 +138,13 @@ pub fn handle_shortcut_event(
                 mode,
                 event_type,
                 &shortcut_state,
-                move || crate::audio::record_audio(&app_for_fn, RecordingMode::Command),
+                move || {
+                    crate::audio::record_audio(
+                        &app_for_fn,
+                        RecordingMode::Command,
+                        RecordingTrigger::Keyboard,
+                    );
+                },
             );
         }
         ShortcutAction::PasteLastTranscript => {
@@ -152,7 +164,13 @@ pub fn handle_shortcut_event(
                 mode,
                 event_type,
                 &shortcut_state,
-                move || crate::audio::record_audio(&app_for_fn, RecordingMode::Llm),
+                move || {
+                    crate::audio::record_audio(
+                        &app_for_fn,
+                        RecordingMode::Llm,
+                        RecordingTrigger::Keyboard,
+                    );
+                },
             );
         }
         ShortcutAction::TransformSelectionLlmMode(index) => {

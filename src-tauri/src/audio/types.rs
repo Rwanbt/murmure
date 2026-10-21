@@ -112,6 +112,20 @@ impl AudioState {
         self.session_gen.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    /// Claim the session for a new recording.
+    ///
+    /// The claim is atomic, so two rapid triggers cannot both start. The
+    /// generation is only advanced by the caller that wins the claim: a
+    /// rejected trigger must not invalidate the running session, and it
+    /// must not replace the chunk pipeline, because that would discard the
+    /// audio already captured and leave the user with an empty result.
+    pub fn claim_session(&self) -> Result<u64, SessionBusy> {
+        self.session_active
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| SessionBusy)?;
+        Ok(self.begin_session())
+    }
+
     pub fn invalidate_session(&self) {
         self.session_gen.fetch_add(1, Ordering::SeqCst);
     }
@@ -162,4 +176,76 @@ pub(super) enum RecorderStartError {
     InitFailed,
     StartFailed,
     Superseded,
+}
+
+/// A recording session is already running, so a new trigger is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionBusy;
+
+impl std::fmt::Display for SessionBusy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a recording session is already running")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_second_trigger_cannot_claim_a_running_session() {
+        let state = AudioState::new();
+        let first = state
+            .claim_session()
+            .expect("the first trigger must win the claim");
+        assert!(state.is_session_active());
+        assert_eq!(state.claim_session(), Err(SessionBusy));
+        // The refused trigger must not invalidate the running session and
+        // must not steal the session flag.
+        assert_eq!(state.current_session(), first);
+        assert!(state.is_session_active());
+    }
+
+    #[test]
+    fn a_finished_session_can_be_claimed_again() {
+        let state = AudioState::new();
+        let first = state.claim_session().unwrap();
+        state.set_session_active(false);
+        let second = state.claim_session().unwrap();
+        assert!(second > first);
+        assert!(state.is_session_active());
+    }
+
+    #[test]
+    fn exactly_one_of_two_concurrent_claims_wins() {
+        let state = std::sync::Arc::new(AudioState::new());
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let workers: Vec<_> = (0..2)
+            .map(|_| {
+                let state = std::sync::Arc::clone(&state);
+                let barrier = std::sync::Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    state.claim_session().is_ok()
+                })
+            })
+            .collect();
+        let winners = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .filter(|won| *won)
+            .count();
+        assert_eq!(
+            winners, 1,
+            "only one concurrent trigger may start a recording"
+        );
+    }
+
+    #[test]
+    fn invalidating_a_session_advances_the_generation() {
+        let state = AudioState::new();
+        let first = state.begin_session();
+        state.invalidate_session();
+        assert!(state.current_session() > first);
+    }
 }

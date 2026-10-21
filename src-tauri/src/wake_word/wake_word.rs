@@ -772,11 +772,15 @@ fn transcribe_segment(app: &AppHandle, samples: Vec<f32>) -> anyhow::Result<Stri
 }
 
 fn trigger_recording(app: &AppHandle, mode: RecordingMode) {
-    let audio_state = app.state::<AudioState>();
-    audio_state.set_recording_trigger(RecordingTrigger::WakeWord);
-
     crate::onboarding::onboarding::capture_focus_at_record_start(app);
-    crate::audio::record_audio(app, mode);
+    // The trigger is applied by record_audio itself, and only once the
+    // session claim succeeded. A wake word must never steal a session that
+    // is already running: the refused trigger has to leave the running
+    // recording, its trigger and its source untouched.
+    if !crate::audio::record_audio(app, mode, RecordingTrigger::WakeWord) {
+        info!("Wake word ignored: a recording session is already running");
+        return;
+    }
 
     let source = match mode {
         RecordingMode::Standard => RecordingSource::Standard,
