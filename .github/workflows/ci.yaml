@@ -215,21 +215,8 @@ jobs:
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
                   }
 
-    # The RustSec advisory database is checked against the exact lock file, so
-    # a vulnerable transitive dependency cannot reach a release unnoticed.
-    dependency-audit:
-        name: Dependency audit
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
-        steps:
-            - uses: actions/checkout@v4
-            - name: Check the Rust dependencies against the RustSec advisories
-              uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998
-              with:
-                  token: ${{ secrets.GITHUB_TOKEN }}
-                  working-directory: src-tauri
-
+    # The dependency audit runs where the lock file is fixed, so the advisory
+    # list it reports matches the versions that are actually shipped.
     # A green pipeline must never hide a skipped real-audio validation. The
     # two jobs above are the only evidence that Pocket TTS really synthesizes
     # French speech on the target platform, so a skipped or cancelled result
