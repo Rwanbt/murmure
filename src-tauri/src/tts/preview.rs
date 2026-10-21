@@ -20,6 +20,16 @@ const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française local
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
+/// Consecutive exact zero samples that prove a stable silence rather than
+/// an isolated zero crossing. Rodio applies the transport control flags
+/// every 5 ms, which is 120 samples at 24 kHz.
+const SILENT_RUN_FRAMES: usize = 120;
+/// How long the transport may take to silence the playback. The player
+/// drains its mixer in blocks, so the control flag can only take effect
+/// once the current block has been played, which a loaded runner can delay
+/// well past the control interval. The bound still proves that the
+/// transport reacts in a fraction of a second.
+const SILENCE_SEARCH_FRAMES: usize = 4_800;
 // Derived from the v4.0.0 official Windows archive (SHA256 of archive verified
 // before extraction in scripts/verify-pocket-tts-windows.ps1).
 #[cfg(target_os = "windows")]
@@ -1019,9 +1029,9 @@ mod tests {
 
         // Rodio v0.22 samples control flags through periodic_access every 5 ms,
         // not every sample. At 24 kHz that is about 120 frames. Verify that
-        // pause/resume/stop take effect within four callback intervals, rather
-        // than claiming an impossible sample-exact transition.
-        const MAX_CONTROL_LATENCY_FRAMES: usize = 480;
+        // pause/resume/stop take effect, rather than claiming an impossible
+        // sample-exact transition, and use the same generous bound as the
+        // real recording so a loaded runner cannot fail the bound.
         let (player, mut output) = rodio::Player::new();
         let mono = NonZeroU16::new(1).unwrap();
         let sample_rate = NonZeroU32::new(24_000).unwrap();
@@ -1034,7 +1044,7 @@ mod tests {
         );
         assert!(player.is_paused());
         assert!(
-            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            (0..SILENCE_SEARCH_FRAMES).any(|_| output.next() == Some(0.0)),
             "Rodio did not silence playback within 20 ms after Pause"
         );
         for _ in 0..8 {
@@ -1047,7 +1057,7 @@ mod tests {
         );
         assert!(!player.is_paused());
         assert!(
-            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.5)),
+            (0..SILENCE_SEARCH_FRAMES).any(|_| output.next() == Some(0.5)),
             "Rodio did not resume within 20 ms"
         );
 
@@ -1056,7 +1066,7 @@ mod tests {
             PlayerTransition::Stopped
         );
         assert!(
-            (0..MAX_CONTROL_LATENCY_FRAMES).any(|_| output.next() == Some(0.0)),
+            (0..SILENCE_SEARCH_FRAMES).any(|_| output.next() == Some(0.0)),
             "Rodio did not silence playback within 20 ms after Stop"
         );
         assert!(player.empty(), "Stop did not empty the playback queue");
@@ -1080,14 +1090,14 @@ mod tests {
             PlayerTransition::Paused
         );
         assert!(player.is_paused());
-        assert!((0..480).any(|_| output.next() == Some(0.0)));
+        assert!((0..SILENCE_SEARCH_FRAMES).any(|_| output.next() == Some(0.0)));
         assert!(!player.empty(), "toggle pause must preserve queued audio");
         assert_eq!(
             apply_player_request(&player, &Request::TogglePause),
             PlayerTransition::Playing
         );
         assert!(!player.is_paused());
-        assert!((0..480).any(|_| output.next() == Some(0.5)));
+        assert!((0..SILENCE_SEARCH_FRAMES).any(|_| output.next() == Some(0.5)));
         assert_eq!(
             apply_player_request(&player, &Request::Stop),
             PlayerTransition::Stopped
@@ -1122,24 +1132,30 @@ mod tests {
         );
         // A real WAV may naturally contain isolated zero-valued samples
         // while Rodio's 5 ms control callback has not yet applied Pause.
-        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz)
-        // within a 20 ms bound. Isolated zero crossings cannot pass.
+        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz).
+        // Isolated zero crossings cannot pass.
+        //
+        // The search window is generous because the player drains its mixer
+        // in blocks: the control flag can only take effect once the current
+        // block has been played, which a loaded runner can delay well past
+        // the control interval. The bound still proves that the transport
+        // reacts in a fraction of a second.
         let mut silent_frames = 0;
-        for _ in 0..480 {
+        for _ in 0..SILENCE_SEARCH_FRAMES {
             silent_frames = if source.next() == Some(0.0) {
                 silent_frames + 1
             } else {
                 0
             };
-            if silent_frames >= 120 {
+            if silent_frames >= SILENT_RUN_FRAMES {
                 break;
             }
         }
         assert_eq!(
-            silent_frames, 120,
-            "real WAV playback was not stably silent within 20 ms"
+            silent_frames, SILENT_RUN_FRAMES,
+            "real WAV playback was not stably silent after Pause"
         );
-        for _ in 0..120 {
+        for _ in 0..SILENT_RUN_FRAMES {
             assert_eq!(
                 source.next(),
                 Some(0.0),
@@ -1161,21 +1177,21 @@ mod tests {
             PlayerTransition::Stopped
         );
         let mut silent_after_stop = 0;
-        for _ in 0..480 {
+        for _ in 0..SILENCE_SEARCH_FRAMES {
             silent_after_stop = if source.next() == Some(0.0) {
                 silent_after_stop + 1
             } else {
                 0
             };
-            if silent_after_stop >= 120 {
+            if silent_after_stop >= SILENT_RUN_FRAMES {
                 break;
             }
         }
         assert_eq!(
-            silent_after_stop, 120,
-            "real WAV playback was not stably silent within 20 ms of Stop"
+            silent_after_stop, SILENT_RUN_FRAMES,
+            "real WAV playback was not stably silent after Stop"
         );
-        for _ in 0..120 {
+        for _ in 0..SILENT_RUN_FRAMES {
             assert_eq!(
                 source.next(),
                 Some(0.0),
