@@ -163,6 +163,26 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .device_event_filter(DeviceEventFilter::Never)
         .setup(|app| {
+            // The ONNX Runtime is loaded at runtime instead of being linked at
+            // build time, so the engine has to know where it is before it
+            // creates its first session. The path is taken from the resource
+            // directory of the application, which is where the installer puts
+            // it.
+            match crate::engine::onnx_runtime::state(app.handle()) {
+                crate::engine::onnx_runtime::RuntimeState::Ready(path) => {
+                    // The variable is read by the runtime loader when the
+                    // first session is created.
+                    std::env::set_var("ORT_DYLIB_PATH", &path);
+                    info!("The ONNX Runtime is available at {}", path.display());
+                }
+                crate::engine::onnx_runtime::RuntimeState::Missing => {
+                    warn!(
+                        "{} is not installed, the speech recognition is unavailable.",
+                        crate::engine::onnx_runtime::expected_description()
+                    );
+                }
+            }
+
             let start_hidden =
                 std::env::args().any(|arg| arg == "--autostart" || arg == "--hidden");
             if start_hidden {
