@@ -84,9 +84,17 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
 
+    pocket-tts-model-isolation:
+        name: Pocket TTS model cache isolation contract
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the Pocket TTS model cache isolation
+              shell: pwsh
+              run: ./scripts/test-pocket-tts-model-cache.ps1
+
     pocket-tts-french-audio:
         name: Pocket TTS real French WAV on Windows
-        if: github.head_ref == 'feat/pocket-tts-french-audio-smoke'
         runs-on: windows-latest
         timeout-minutes: 25
         permissions:
@@ -102,7 +110,6 @@ jobs:
 
     pocket-tts-offline-cache-windows:
         name: Pocket TTS cached French WAV without network
-        if: github.head_ref == 'test/pocket-tts-offline-cache-windows'
         runs-on: windows-latest
         timeout-minutes: 25
         permissions:
@@ -113,6 +120,37 @@ jobs:
               shell: pwsh
               run: |
                   ./scripts/test-pocket-tts-offline-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-offline"
+
+    # A green pipeline must never hide a skipped real-audio validation. The
+    # two jobs above are the only evidence that Pocket TTS really synthesizes
+    # French speech on the target platform, so a skipped or cancelled result
+    # is a qualification failure, not a neutral outcome.
+    pocket-tts-audio-qualification:
+        name: Pocket TTS audio qualification gate
+        needs: [pocket-tts-french-audio, pocket-tts-offline-cache-windows]
+        if: always()
+        runs-on: ubuntu-latest
+        steps:
+            - name: Fail when a critical real-audio job did not succeed
+              env:
+                  FRENCH_AUDIO_RESULT: ${{ needs.pocket-tts-french-audio.result }}
+                  OFFLINE_AUDIO_RESULT: ${{ needs.pocket-tts-offline-cache-windows.result }}
+              run: |
+                  set -euo pipefail
+                  failed=0
+                  if [ "$FRENCH_AUDIO_RESULT" != "success" ]; then
+                      echo "::error::Critical job 'Pocket TTS real French WAV on Windows' result=${FRENCH_AUDIO_RESULT}"
+                      failed=1
+                  fi
+                  if [ "$OFFLINE_AUDIO_RESULT" != "success" ]; then
+                      echo "::error::Critical job 'Pocket TTS cached French WAV without network' result=${OFFLINE_AUDIO_RESULT}"
+                      failed=1
+                  fi
+                  if [ "$failed" -ne 0 ]; then
+                      echo "Real Pocket TTS audio evidence is missing; the stack is NOT audio-qualified."
+                      exit 1
+                  fi
+                  echo "Both critical Pocket TTS audio jobs ran and succeeded."
 
     compile-linux:
         uses: ./.github/workflows/build-linux.yml
