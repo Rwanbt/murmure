@@ -22,7 +22,7 @@ this report is the summary and the verdict.
 | JavaScript dependency audit | **Enforced**, 5 advisories found, 3 closed, 2 accepted with a written reason | `scripts/audit-js-dependencies.py`, job `39584806493` |
 | Contrast measured | **9 pairs**, all above their WCAG 2.2 threshold | `scripts/check-contrast.py` |
 | Screen structure audit | **133 screens**, 0 finding | `scripts/audit-accessibility.py` |
-| Rust unit tests | **400 passed, 0 failed** | `cargo test --lib` |
+| Rust unit tests | **410 registered, 405 passed, 5 ignored with a stated reason** | `cargo test --lib` |
 | TypeScript and lint | **Clean** | `tsc --noEmit` exit 0, `eslint --max-warnings 0` exit 0 |
 | STT round trip with the real model | **PROVEN**, after two defects were removed. It now reports `1 passed; 0 failed; 404 filtered out`, transcribes `"bonjour ceci est un essai de synthese vocale locale"`, loads the engine in 2.27 s and transcribes 3.64 s of audio in 0.83 s (real time factor 0.228) | job "Pocket TTS to Parakeet French round trip" `119192646552`, run `39591303205` at `5f5b474`. Before that: `running 0 tests; 404 filtered out` in run `39587708682`, then `The ONNX Runtime is not installed` in run `39589886791` |
 
@@ -109,9 +109,9 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | Gate | State |
 | --- | --- |
 | **T0** static | Rust format and clippy, TypeScript check, frontend lint, workflow validation, RustSec audit, OSV audit, contrast measurement, screen audit. **All enforced in CI.** |
-| **T1** unit | 400 Rust tests, 11 audio-contract checks, TypeScript compile. **Green.** |
-| **T2** real integration | Official runtime, real French model, real WAV on three platforms, offline run, installation, cancellation, cache, real STT. **Green, with the two POSIX targets of the matrix not exercised.** |
-| **T3** packaged end-to-end | Install, launch, tray shutdown, no orphan process, no temporary file, uninstall, unrelated data preserved. **Green for the automated part; the graphical journey is `BLOCKED`.** |
+| **T1** unit | 410 Rust tests registered, 405 passed and 5 ignored with a stated reason, 11 audio-contract checks, TypeScript compile. **Green.** |
+| **T2** real integration | Official runtime, real French model, real WAV on three platforms, a fourth generated locally, offline run, installation, cancellation, cache, real STT on a reference recording, real STT on a real capture, and a silent capture that produces no words. **Green, with the two POSIX targets of the matrix not exercised.** |
+| **T3** packaged end-to-end | Built, installed, launched, stopped, uninstalled on a real desktop, no orphan process, no temporary file, user settings preserved. **Green for the automated part; the graphical journey is `BLOCKED`.** |
 
 No critical test is skipped. The tests that do not run are not skipped — they
 are `BLOCKED`, with the reason and a manual protocol recorded in
@@ -140,27 +140,35 @@ are `BLOCKED`, with the reason and a manual protocol recorded in
 The reasons are concrete, not cautious:
 
 - A packaged application whose main interface path was never driven is not a
-  proven product, whatever the pipeline says.
-- Software that records speech but was never run against a microphone,
-  a refused permission, or a device change is not a proven recorder.
+  proven product, whatever the pipeline says. The installer now installs,
+  launches, stops and uninstalls on a real desktop, and the window opens, but
+  nobody has clicked through consent, download, synthesis, pause, volume and
+  the settings that follow.
+- The recorder has met a microphone, and that part is proven: 8.99 seconds of
+  real capture, peak 24.4 % of full scale, transcribed by the pinned model,
+  and a silent capture that produced no words. What remains unproven is the
+  interface around it: a refused permission, a revoked permission, a device
+  change mid-run, a sleep and wake, and the shortcuts.
 - An accessibility claim that never met a screen reader is not proven.
 
 The work that this environment could prove is proven, and it is deliberately
 not rounded up: three real French recordings from three platforms with their
-digests checked first, 400 unit tests, measured contrast, 133 audited screens,
-two audited dependency trees, and a packaged installer that starts, stops and
-cleans up after itself.
+digests checked first, a fourth generated on the project owner's machine, a
+real microphone capture transcribed on that same machine, 410 unit tests,
+measured contrast, 133 audited screens, two audited dependency trees, and a
+packaged installer that installs, starts, stops, uninstalls and leaves the
+user's settings alone.
 
 The three blocked items now have a complete, recordable protocol in
-`QUALIFICATION.md`: §6 covers the packaged journey (13 steps), **§6.1** covers
-the microphone and speech recognition (15 scenarios: absent input, permission
-refused, permission revoked, device change, silence, interruption, rapid
-triggers, concurrent shortcuts), and **§6.2** covers the screen reader
+`QUALIFICATION.md`: §6 covers the packaged journey (13 steps, of which 1 and
+11 are now recorded as executed in §6.0), **§6.1** covers the microphone and
+speech recognition (15 scenarios, with §6.1.1 and §6.1.2 recording what was
+executed outside the interface), and **§6.2** covers the screen reader
 (7 scenarios). §6.3 states the rule that makes the result usable: a row that
 was not run stays untested and is never counted as passed.
 
 The verdict becomes **CONDITIONAL GO** once those rows are executed and
-recorded, and **GO** once the two unexercised POSIX targets and a performance
-baseline are covered. None of those require new engineering —
-they require a desktop, a microphone, a screen reader, two runners, and a
-stopwatch.
+recorded, and **GO** once the two unexercised POSIX targets, the three
+lifecycle states that have no signal, and a performance baseline are covered.
+None of those require new engineering for the first two: they require a
+desktop, a microphone, a screen reader, two runners, and a stopwatch.
