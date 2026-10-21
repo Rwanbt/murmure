@@ -49,3 +49,10 @@ CLAUDE.md
 # Release artifacts downloaded locally
 tmp-release/
 tmp-release-flat/
+
+# Compiled Rust output when CARGO_TARGET_DIR points at the repository root
+/target/
+
+# Python bytecode caches produced by running the scripts
+__pycache__/
+*.pyc
