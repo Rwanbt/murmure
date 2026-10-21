@@ -91,6 +91,7 @@ Write-Output "The installed application survived a $LaunchSeconds second startup
 # the process only, so a bundle that shipped without
 # resources/onnxruntime/onnxruntime.dll passed every check while the first
 # dictation failed on the user's machine.
+$dataDirectory = Join-Path $env:LOCALAPPDATA 'com.al1x-ai.murmure'
 $logFile = Join-Path $dataDirectory 'logs\murmure.log'
 if (-not (Test-Path -LiteralPath $logFile)) {
     Fail "The application wrote no log at $logFile, so the engine state cannot be checked"
@@ -105,7 +106,6 @@ if ($log -notmatch 'Transcription engine initialized and ready') {
 Write-Output "The speech engine found its ONNX Runtime and reported itself ready."
 
 # --- Privacy: no model is downloaded without an explicit consent ----------
-$dataDirectory = Join-Path $env:LOCALAPPDATA 'com.al1x-ai.murmure'
 if (Test-Path -LiteralPath (Join-Path $dataDirectory 'pocket-tts')) {
     Fail "The application created a Pocket TTS model cache without an explicit consent"
 }
