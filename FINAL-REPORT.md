@@ -93,13 +93,18 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | Area | Windows | Linux x86_64 | macOS arm64 | Linux arm64 / macOS x86_64 |
 | --- | --- | --- | --- | --- |
 | Compilation | **PROVEN** (`compile-windows`) | **PROVEN** (`compile-linux`) | **PROVEN** (`compile-macos`) | not exercised |
-| Unit tests | **PROVEN** (400 passed) | **PROVEN** | **PROVEN** | not exercised |
-| Real engine, real French audio | **PROVEN** | **PROVEN** (job `119154672419`) | **PROVEN** (job `119154672275`) | pinned but **not exercised** |
+| Unit tests | **PROVEN** (405 passed of 410, 5 ignored with a named runner) | **PROVEN** | **PROVEN** | not exercised |
+| TTS: real French audio from the official runtime | **PROVEN** on the runner and on a real desktop | **PROVEN** (job `119154672419`) | **PROVEN** (job `119154672275`) | pinned but **not exercised** |
 | Offline audio | **PROVEN** | not exercised | not exercised | no |
-| Packaged application, installed and launched | **PROVEN** on a real desktop: NSIS 590 MB, silent install 61 s, launch, silent uninstall, settings preserved | no packaging | no packaging | no |
+| Installer: verified runtime | **PROVEN**, archive and executable digests checked before use, atomic publication, cancellation, overwrite refused (two tests that until `caf5b75` had no runner) | **PROVEN** for install/verify | **PROVEN** for install/verify | pinned, not exercised |
+| Installer: packaged application | **PROVEN** on a real desktop: NSIS 590 MB, silent install 61 s, launch, silent uninstall, settings preserved, no leftover shortcut | no packaging | no packaging | no |
 | Graphical user journey | **BLOCKED** — headless runner | **BLOCKED** | **BLOCKED** | **BLOCKED** |
-| Audio device, permission refused or revoked, device change | **BLOCKED** — no hardware | **BLOCKED** | **BLOCKED** | **BLOCKED** |
+| Audio device, permission refused or revoked, device change | **PARTIAL** — a real capture and a real silence are transcribed; the interface scenarios are **BLOCKED** | **BLOCKED** | **BLOCKED** | **BLOCKED** |
 | STT transcription | **PROVEN** (real engine on a real reference recording, and on a real capture from this machine's microphone) | compilation only | compilation only | no |
+| Security: child processes | **PROVEN** — the CLI receives the text on stdin rather than in its arguments, no inherited Hugging Face credential, timeouts on generation | shared | shared | shared |
+| Security: file system | **PROVEN** — junction and reparse point refused, atomic publication, size limit, path validated before removal | shared | shared | shared |
+| Security: Tauri surface | **PROVEN** — every command validates its arguments in Rust, the cache path is resolved from the backend | shared | shared | shared |
+| Security: privacy | **PROVEN** — no recording, transcript or spoken text is logged, and the settings directory holds none of them (§6.0) | shared | shared | shared |
 | Dependency audit | **PROVEN** (Rust + JS) | shared | shared | shared |
 | Contrast | **PROVEN** (measured) | shared | shared | shared |
 | Screen structure | **PROVEN** (133 screens) | shared | shared | shared |
