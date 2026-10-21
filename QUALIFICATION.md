@@ -277,6 +277,56 @@ Windows machine with a visible desktop, a speaker and a microphone.
 
 ---
 
+### 6.1 Microphone and speech recognition
+
+The continuous integration never touches a microphone, so none of these
+scenarios is proven. Run them on a Windows machine with an input device.
+Record the outcome of each one.
+
+| # | Scenario | What to do | What must happen |
+| --- | --- | --- | --- |
+| 1 | First recording | Press the recording shortcut, say a French sentence, press it again | A transcription appears, the audio that was captured matches what was said, and no recording starts before the shortcut |
+| 2 | Repeated recording | Do the first scenario three times in a row | Every attempt produces its own transcription, and no recording stays open between them |
+| 3 | Manual stop | Start a recording and stop it by hand after two seconds | The recording stops immediately and the short audio is transcribed rather than discarded |
+| 4 | Long recording | Record for the longest duration the interface allows | The recording ends at the limit without losing the beginning, and the transcription arrives |
+| 5 | Silence | Record five seconds of silence | The result is empty or a clear message, never invented text |
+| 6 | Absent input | Disable the microphone in the system settings, then record | A message names the missing device; the application does not hang and does not crash |
+| 7 | Permission refused | Remove the microphone permission of the application, then record | A message states that permission is required, with no silent failure |
+| 8 | Permission revoked | Start with permission granted, revoke it while the application runs, then record | The revocation is noticed on the next attempt, and the application recovers once permission returns |
+| 9 | Device change | Plug or unplug a microphone, or switch the default device, then record | The next recording uses the new device without restarting the application |
+| 10 | System interruption | Put the machine to sleep during a recording and wake it | The session ends cleanly, the microphone is released, and the tray shows an idle state |
+| 11 | Absent model | Move the speech model directory away, then record | A message names the missing model; no partial transcript is produced |
+| 12 | Corrupted model | Truncate one model file, then record | The failure is reported as such, and the application stays usable after the file is restored |
+| 13 | Restart after a failure | After any failure above, restart the application and record again | The first recording after the restart succeeds |
+| 14 | Rapid triggers | Press the recording shortcut four times quickly | Exactly one recording runs; the running audio is never discarded |
+| 15 | Concurrent shortcuts | Press the recording shortcut and a text-to-speech shortcut together | The two do not interleave: either one is refused with a message, or they run one after the other |
+
+### 6.2 Screen reader
+
+The contrast and the structure are measured by the pipeline, but the
+announcement order is not. Run this with Narrator on Windows, or VoiceOver on
+macOS, and record what is announced.
+
+| # | Scenario | What must happen |
+| --- | --- | --- |
+| 1 | Reach the speech screen with the keyboard only | Every control is reachable in reading order, and the focus indicator is always visible |
+| 2 | Focus the consent checkbox | Its purpose is announced in French, and its state is announced when it changes |
+| 3 | Start a runtime installation | The progress is announced as a value that changes, not only as a moving sentence |
+| 4 | Trigger an error | The message is announced without moving the focus away from where the user is |
+| 5 | Focus the disabled speak button | The reason it is disabled is available to the screen reader, not only visually |
+| 6 | Play, pause, resume, stop | Each state change is announced once, and the announcements do not overlap |
+| 7 | Leave the screen with the keyboard | The focus never becomes trapped and never disappears |
+
+### 6.3 Recording the results
+
+Each row above is recorded with its date, the version under test, and its
+outcome. A row that was not run stays untested: it must not be marked as
+passed by omission. Once every row has an outcome, the verdict in §7 can move
+to **CONDITIONAL GO** for the rows that passed, and the rows that failed
+become defect reports.
+
+---
+
 ## 7. Verdict
 
 **NO-GO** at the time of writing.

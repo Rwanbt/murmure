@@ -133,8 +133,16 @@ digests checked first, 400 unit tests, measured contrast, 133 audited screens,
 two audited dependency trees, and a packaged installer that starts, stops and
 cleans up after itself.
 
-The verdict becomes **CONDITIONAL GO** once the three blocked items are
-executed and recorded, and **GO** once the two unexercised POSIX targets and
-the performance baseline are covered. None of those require new engineering —
+The three blocked items now have a complete, recordable protocol in
+`QUALIFICATION.md`: §6 covers the packaged journey (13 steps), **§6.1** covers
+the microphone and speech recognition (15 scenarios: absent input, permission
+refused, permission revoked, device change, silence, interruption, rapid
+triggers, concurrent shortcuts), and **§6.2** covers the screen reader
+(7 scenarios). §6.3 states the rule that makes the result usable: a row that
+was not run stays untested and is never counted as passed.
+
+The verdict becomes **CONDITIONAL GO** once those rows are executed and
+recorded, and **GO** once the two unexercised POSIX targets and a performance
+baseline are covered. None of those require new engineering —
 they require a desktop, a microphone, a screen reader, two runners, and a
 stopwatch.
