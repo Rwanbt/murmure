@@ -84,7 +84,7 @@ All are **Draft**, **open**, **not merged**. `main` is untouched at `ffef307`.
 | [#51](https://github.com/Rwanbt/murmure/pull/51) | `fix/stt-second-trigger-keeps-recording` | `daca246` | the second trigger keeps the running recording |
 | [#52](https://github.com/Rwanbt/murmure/pull/52) | `test/stt-real-french-roundtrip` | `d958663` | real French recording transcribed by the pinned model |
 | [#53](https://github.com/Rwanbt/murmure/pull/53) | `fix/tts-localized-errors` | `684c640` | French error messages |
-| [#54](https://github.com/Rwanbt/murmure/pull/54) | `fix/dependency-advisories` | `22ac03f` | dependency advisories, POSIX runtime, accessibility gates |
+| [#54](https://github.com/Rwanbt/murmure/pull/54) | `fix/dependency-advisories` | `ef841b8` | dependency advisories, real STT round trip and its silence counter-test, the two installer tests that had no runner, model states that refuse a partial download, the privacy gate on log statements, CI robustness, and the qualification documents. Its body states that it exceeds the 400-line target and why |
 
 ## 4. Qualification matrix
 
