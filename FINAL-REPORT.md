@@ -41,7 +41,7 @@ Every one of these was a real behaviour defect, not a style issue.
 | The frontend dependency tree had never been audited | **High** | New `osv.dev` audit found 5 advisories |
 | "Clear the model cache" deleted the installed runtime | **Critical** | Tauri's cache and local-data roots are the same directory on Windows |
 | A partially downloaded or unreadable model was presented as "Ready, usable offline" | **High** | The state followed the presence of the directory; an interrupted Hugging Face download leaves a directory with an `<digest>.incomplete` blob, and the first synthesis then failed in front of the user |
-| The dictated words were written to the debug log | **High** | Six `debug!` and `info!` statements printed the transcription or the recognized phrase. A log file outlives the audio it came from and travels into bug reports | `bb1d067` and `0c0da20`, and `scripts/check-private-logs.py` now refuses the pattern in `Check Guidelines` |
+| The dictated words were written to the log | **High** | Ten `debug!`, `info!` and `trace!` statements printed the transcription or the recognized phrase. A log file outlives the audio it came from and travels into bug reports | `bb1d067`, `0c0da20` and `eb47928`, and `scripts/check-private-logs.py` now refuses the pattern in `Check Guidelines` |
 | Two tests were ignored with a reason and had no runner at all | **High** | Neither installer test was ever handed the archive it needs, so both had been skipped silently since they were written |
 | A rapid second trigger discarded the running recording | **High** | The wake word path lacked the guard the shortcuts have |
 | A hidden but focusable file input trapped keyboard focus | **Medium** | New screen audit |
