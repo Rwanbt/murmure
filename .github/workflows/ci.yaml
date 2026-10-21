@@ -335,11 +335,34 @@ jobs:
                       if ($silenceOutput -notmatch '1 passed') {
                           throw 'The silence counter-test ran no test, so it proved nothing'
                       }
+
+                      # Two installer tests are ignored everywhere because they
+                      # need the official archive. This job already downloaded it
+                      # and checked its digest, so they run here against the real
+                      # bytes instead of staying ignored forever.
+                      $archive = Join-Path $destination 'pocket-tts.zip'
+                      if (-not (Test-Path -LiteralPath $archive)) {
+                          throw 'The verified Pocket TTS archive is missing'
+                      }
+                      $env:MURMURE_TTS_OFFICIAL_ARCHIVE = $archive
+                      # One thread: the tests share a process wide install guard,
+                      # and running them in parallel would make one of them fail
+                      # on a lock rather than on a real defect.
+                      $installerOutput = cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests -- --ignored --nocapture --test-threads=1 2>&1 | Out-String
+                      $installerExit = $LASTEXITCODE
+                      Write-Output $installerOutput
+                      if ($installerExit -ne 0) {
+                          throw 'The installer contract failed against the official archive'
+                      }
+                      if ($installerOutput -notmatch '2 passed') {
+                          throw 'The installer contract ran fewer than two tests, so it proved less than it claims'
+                      }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
                       Remove-Item -LiteralPath $silence -Force -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_STT_SILENCE_WAV -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_TTS_OFFICIAL_ARCHIVE -ErrorAction SilentlyContinue
                   }
 
     # The frontend tree was never audited, so a vulnerable transitive package
