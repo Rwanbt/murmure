@@ -30,6 +30,20 @@ pub(super) const WINDOWS_SIDECAR_SHA256: &str =
 // remains independent: never hold this lock while generating or playing audio.
 pub(crate) static MODEL_APPROVAL_LOCK: Mutex<()> = Mutex::new(());
 
+/// Model currently being synthesized, so its state can be reported.
+static ACTIVE_MODEL: Mutex<Option<String>> = Mutex::new(None);
+
+/// Clears the active model when the generation ends, on every path.
+struct ActiveModelGuard;
+
+impl Drop for ActiveModelGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = ACTIVE_MODEL.lock() {
+            *active = None;
+        }
+    }
+}
+
 enum Request {
     Preview,
     Speak(String),
@@ -373,6 +387,10 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     } else {
         "french"
     };
+    if let Ok(mut active) = ACTIVE_MODEL.lock() {
+        *active = Some(model.to_string());
+    }
+    let _active_guard = ActiveModelGuard;
     // The first, user-approved invocation may download the public model.
     // Restrict the CLI to a dedicated app cache with no inherited HF login.
     let cache_dir = pocket_tts_model_cache(app)?;
@@ -498,6 +516,20 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
         return Err("Pocket TTS preview worker is unavailable".to_string());
     }
     Ok(())
+}
+
+/// Describe the models Murmure supports and their local state.
+///
+/// The catalog is exact and the local state is only reported when it can be
+/// established: a model is never presented as ready when its presence in
+/// the cache is ambiguous.
+#[tauri::command]
+pub fn pocket_tts_models(
+    app: AppHandle,
+) -> Result<Vec<super::models::PocketTtsModelStatus>, String> {
+    let cache = pocket_tts_model_cache(&app)?;
+    let in_use = ACTIVE_MODEL.lock().ok().and_then(|active| active.clone());
+    Ok(super::models::model_statuses(&cache, in_use.as_deref()))
 }
 
 /// Remove only Murmure's isolated Pocket TTS model cache, never the user's

@@ -24,6 +24,23 @@ interface InstallProgress {
     totalBytes: number | null;
 }
 
+type ModelState = 'not_installed' | 'ready' | 'in_use';
+
+interface ModelStatus {
+    id: string;
+    repository: string;
+    directory: string;
+    license: string;
+    state: ModelState;
+    present: boolean;
+    offlineReady: boolean;
+    revision: string | null;
+    localBytes: number | null;
+}
+
+const formatMegabytes = (bytes: number | null) =>
+    bytes === null ? null : `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+
 export const PocketTts = () => {
     const { t } = useTranslation();
     const [state, setState] = useState<PreviewState>('idle');
@@ -38,6 +55,7 @@ export const PocketTts = () => {
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
     const [cancelRequested, setCancelRequested] = useState(false);
     const [clearingCache, setClearingCache] = useState(false);
+    const [modelStatuses, setModelStatuses] = useState<ModelStatus[]>([]);
 
     useEffect(() => {
         let active = true;
@@ -63,6 +81,14 @@ export const PocketTts = () => {
             });
         return () => { active = false; };
     }, [t]);
+
+    useEffect(() => {
+        let active = true;
+        void invoke<ModelStatus[]>('pocket_tts_models')
+            .then((statuses) => { if (active) setModelStatuses(statuses); })
+            .catch(() => { if (active) setModelStatuses([]); });
+        return () => { active = false; };
+    }, [runtimeStatus, model]);
 
     useEffect(() => {
         let cancelled = false;
@@ -356,6 +382,26 @@ export const PocketTts = () => {
                 <p className="text-xs text-muted-foreground">
                     {t('Changes apply to the next playback. Larger models may require more RAM and a separate download.')}
                 </p>
+                {modelStatuses.length > 0 && (
+                    <ul className="space-y-1 text-xs text-muted-foreground" data-testid="pocket-tts-models">
+                        {modelStatuses.map((status) => {
+                            const size = formatMegabytes(status.localBytes);
+                            return (
+                                <li key={status.id}>
+                                    <span className="font-medium">{status.id}</span>
+                                    {' · '}
+                                    {status.state === 'ready' && t('Ready, usable offline')}
+                                    {status.state === 'in_use' && t('In use')}
+                                    {status.state === 'not_installed' && t('Not downloaded yet')}
+                                    {size !== null && ` · ${size}`}
+                                    {status.revision !== null && ` · ${status.revision.slice(0, 12)}`}
+                                    {' · '}
+                                    {status.license}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
                 <label htmlFor="pocket-tts-text" className="block text-sm font-medium">
                     {t('Text to read aloud')}
                 </label>
