@@ -154,13 +154,13 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
 | 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
 | 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
-| 11 | STT qualification | P0 | VALIDATING | `test/stt-real-french-roundtrip` | #52 | `259fbb5` | a real French recording transcribed by the pinned model | running | the device and permission scenarios | needs a real microphone | execute the manual protocol |
+| 11 | STT qualification | P0 | VALIDATING | `test/stt-real-french-roundtrip` | #52 | `59c417c` | a real French recording transcribed by the pinned model | running | the device and permission scenarios | needs a real microphone | execute the manual protocol |
 | 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
 | 13 | Dependency audit | P1 | VALIDATING | `fix/dependency-advisories` | #54 | `2d3bf46` | the RustSec advisory database | running | eight advisories need a major upgrade of a parent dependency | — | tracked and listed in the audit gate |
 | 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `f5cdbc8` | — | this document | — | — | — |
-| 15 | Rapid triggers keep the recording | P0 | VALIDATING | `fix/stt-second-trigger-keeps-recording` | #51 | `ad22b02` | 4 unit tests | running | — | — | — |
-| 16 | French Pocket TTS errors | P1 | VALIDATING | `fix/tts-localized-errors` | #53 | `8e2638b` | the type check and the lint | running | — | — | — |
-| 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `07e9b41` | the real generated recording | running | — | — | — |
+| 15 | Rapid triggers keep the recording | P0 | VALIDATING | `fix/stt-second-trigger-keeps-recording` | #51 | `d6c5548` | 4 unit tests | running | — | — | — |
+| 16 | French Pocket TTS errors | P1 | VALIDATING | `fix/tts-localized-errors` | #53 | `c2013c8` | the type check and the lint | running | — | — | — |
+| 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `ddaa83e` | the real generated recording | running | — | — | — |
 
 ### 3.1 Defects found and fixed
 
@@ -177,7 +177,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | The ONNX Runtime prebuilt download is not covered by the rust cache, so a dropped connection failed the mandatory Clippy gate | Medium | job `118970407231`, `Peer disconnected` | PR #46 |
 | A duplicated `key:` in a workflow makes GitHub refuse to load it, and PyYAML accepts duplicate keys silently | Medium | three runs failed with no job at all | PR #46, `scripts/validate-workflows.py` |
 | A rapid second trigger replaced the chunk pipeline of the running recording, so the audio was discarded and the user got an empty result | High | the wake word path called `record_audio` without the guard the shortcut paths have | PR #51, an atomic session claim |
-| The real French WAV proof required 120 silent samples inside a 20 ms window, which Rodio's mixer blocks can exceed | Medium | the proof failed on a loaded runner although the transport behaved correctly | PR #50, a realistic silence bound |
+| The real French WAV proof required 120 silent samples inside a 20 ms window, which Rodio's mixer blocks can exceed | Medium | the proof failed on a loaded runner although the transport behaved correctly | PR #50, the proof now inspects the decoded samples directly and the transport stays proven on the in-memory queue |
 | The Tauri build script refuses to run without the SmartMic resources, so the Rust crate never compiled in the new jobs | Medium | `glob pattern resources/smartmic/* path not found` | PR #52, the resources are built first |
 | The dependency audit found fourteen vulnerabilities on the lock file | High | `cargo audit` against `src-tauri/Cargo.lock` | PR #54, the reachable ones are fixed and the rest are listed with their reason |
 | The dependency audit could not publish its result | Low | `Resource not accessible by integration` | PR #54, the job now grants the `checks` permission |
