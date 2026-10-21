@@ -27,6 +27,7 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+                  key: 'ubuntu-24-fresh'
 
             # The ONNX Runtime build script downloads a prebuilt binary that
             # the rust cache does not cover. A transient network failure in
@@ -37,7 +38,6 @@ jobs:
                   path: ~/.cache/ort.pyke.io
                   key: ort-pyke-${{ hashFiles('src-tauri/Cargo.lock') }}
                   restore-keys: ort-pyke-
-                  key: 'ubuntu-24-fresh'
 
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
