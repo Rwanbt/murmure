@@ -299,8 +299,15 @@ fn supervise_generation(
                 .map_err(|_| "Unable to send text to Pocket TTS".to_string())
         });
     if let Err(reason) = write_result {
+        // The runtime may have exited before reading the text, for example on
+        // an unusable CPU or a broken model. Report the generation failure
+        // instead of a misleading transport error.
+        let exited = child.try_wait().ok().flatten();
         let _ = child.kill();
         let _ = child.wait();
+        if exited.is_some_and(|status| !status.success()) {
+            return Err("Pocket TTS generation failed".into());
+        }
         return Err(reason);
     }
     let started = Instant::now();
@@ -790,14 +797,15 @@ mod tests {
         )
     }
 
-    /// A command that succeeds immediately without producing any output file.
+    /// A command that consumes the text and then succeeds without producing
+    /// any output file. It must stay alive long enough to accept the text.
     #[cfg(windows)]
     fn silent_success_command() -> (PathBuf, Vec<std::ffi::OsString>) {
         (
             PathBuf::from("cmd.exe"),
             vec![
                 std::ffi::OsString::from("/c"),
-                std::ffi::OsString::from("exit 0"),
+                std::ffi::OsString::from("more > nul"),
             ],
         )
     }
@@ -808,7 +816,30 @@ mod tests {
             PathBuf::from("sh"),
             vec![
                 std::ffi::OsString::from("-c"),
-                std::ffi::OsString::from("exit 0"),
+                std::ffi::OsString::from("cat > /dev/null"),
+            ],
+        )
+    }
+
+    /// A command that fails immediately, without reading the text.
+    #[cfg(windows)]
+    fn failing_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("cmd.exe"),
+            vec![
+                std::ffi::OsString::from("/c"),
+                std::ffi::OsString::from("exit 1"),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn failing_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("sh"),
+            vec![
+                std::ffi::OsString::from("-c"),
+                std::ffi::OsString::from("exit 1"),
             ],
         )
     }
@@ -887,6 +918,25 @@ mod tests {
         assert!(
             matches!(outcome, Ok(GenerationOutcome::Stopped)),
             "an explicit stop must end the generation instead of failing it"
+        );
+    }
+
+    #[test]
+    fn a_generation_that_fails_immediately_is_reported_as_a_failure() {
+        let (binary, args) = failing_command();
+        let (_sender, receiver) = mpsc::channel();
+        let outcome = supervise_generation(
+            &binary,
+            &args,
+            "texte",
+            Path::new("cache"),
+            &receiver,
+            Duration::from_secs(30),
+            |_| {},
+        );
+        assert!(
+            outcome.is_err(),
+            "a runtime that exits with a failure must be reported as a generation failure"
         );
     }
 
