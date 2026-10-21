@@ -1126,13 +1126,26 @@ mod tests {
             "no audible signal detected in the first second of the French WAV"
         );
 
+        // A paused transport must not emit any audible sample. A source that
+        // produced nothing at all is equally silent, and Rodio returns None
+        // once its queue is drained, so the check is on the audibility of the
+        // sample and not on its exact value.
+        let audible =
+            |sample: Option<f32>| matches!(sample, Some(value) if value.abs() > f32::EPSILON);
+
         assert_eq!(
             apply_player_request(&player, &Request::Pause),
             PlayerTransition::Paused
         );
+        // The recording must still be queued, so the silence that follows is
+        // the result of the pause and not of an exhausted source.
+        assert!(
+            !player.empty(),
+            "the recording was already consumed before Pause"
+        );
         // A real WAV may naturally contain isolated zero-valued samples
         // while Rodio's 5 ms control callback has not yet applied Pause.
-        // Require 120 consecutive *exact* zero samples (5 ms at 24 kHz).
+        // Require 120 consecutive silent samples (5 ms at 24 kHz).
         // Isolated zero crossings cannot pass.
         //
         // The search window is generous because the player drains its mixer
@@ -1142,10 +1155,10 @@ mod tests {
         // reacts in a fraction of a second.
         let mut silent_frames = 0;
         for _ in 0..SILENCE_SEARCH_FRAMES {
-            silent_frames = if source.next() == Some(0.0) {
-                silent_frames + 1
-            } else {
+            silent_frames = if audible(source.next()) {
                 0
+            } else {
+                silent_frames + 1
             };
             if silent_frames >= SILENT_RUN_FRAMES {
                 break;
@@ -1156,9 +1169,8 @@ mod tests {
             "real WAV playback was not stably silent after Pause"
         );
         for _ in 0..SILENT_RUN_FRAMES {
-            assert_eq!(
-                source.next(),
-                Some(0.0),
+            assert!(
+                !audible(source.next()),
                 "paused playback emitted a non-silent sample"
             );
         }
@@ -1178,10 +1190,10 @@ mod tests {
         );
         let mut silent_after_stop = 0;
         for _ in 0..SILENCE_SEARCH_FRAMES {
-            silent_after_stop = if source.next() == Some(0.0) {
-                silent_after_stop + 1
-            } else {
+            silent_after_stop = if audible(source.next()) {
                 0
+            } else {
+                silent_after_stop + 1
             };
             if silent_after_stop >= SILENT_RUN_FRAMES {
                 break;
@@ -1192,9 +1204,8 @@ mod tests {
             "real WAV playback was not stably silent after Stop"
         );
         for _ in 0..SILENT_RUN_FRAMES {
-            assert_eq!(
-                source.next(),
-                Some(0.0),
+            assert!(
+                !audible(source.next()),
                 "stopped playback emitted a non-silent sample"
             );
         }
