@@ -118,6 +118,65 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
 
+    # The official Kyutai release publishes a build for Linux and macOS, not
+    # only for Windows. These jobs install the one that matches the runner,
+    # verify its published digest before anything is executed, and produce a
+    # real French WAV that the shared structural validator accepts. Without
+    # them the platform matrix would claim parity that was never exercised.
+    pocket-tts-linux-real-audio:
+        name: Pocket TTS real French WAV on Linux
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the WAV validator itself
+              run: python3 scripts/test-pocket-tts-wave-posix.py
+            - name: Check the pinned digests against the published SHA256SUMS
+              run: |
+                  python3 - <<'PY'
+                  import re
+                  import urllib.request
+                  from pathlib import Path
+
+                  published = urllib.request.urlopen(
+                      'https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.0/SHA256SUMS',
+                      timeout=60,
+                  ).read().decode('utf-8')
+                  upstream = {name: digest for digest, name in
+                              (line.split() for line in published.splitlines() if line.strip())}
+                  script = Path('scripts/verify-pocket-tts-posix.sh').read_text(encoding='utf-8')
+                  pinned = {target: digest for target, digest in
+                            re.findall(r"(\S+)\)\s+echo\s+'(\w{64})'", script)}
+                  assert pinned, 'no digest is pinned in the script'
+                  for target, digest in pinned.items():
+                      name = f'pocket-tts-3.3.0-{target}.tar.gz'
+                      assert name in upstream, f'{name} is not published'
+                      assert upstream[name] == digest, (
+                          f'{name}: pinned {digest} but the release publishes {upstream[name]}')
+                      print(f'PASS: {name} matches the published digest')
+                  PY
+            - name: Generate and verify a real French WAV
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: ./scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+
+    pocket-tts-macos-real-audio:
+        name: Pocket TTS real French WAV on macOS
+        runs-on: macos-latest
+        timeout-minutes: 40
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the WAV validator itself
+              run: python3 scripts/test-pocket-tts-wave-posix.py
+            - name: Generate and verify a real French WAV
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: ./scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+
     pocket-tts-model-isolation:
         name: Pocket TTS model cache isolation contract
         runs-on: ubuntu-latest
