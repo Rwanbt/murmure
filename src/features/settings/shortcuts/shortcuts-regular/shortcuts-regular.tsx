@@ -185,6 +185,11 @@ export const ShortcutsRegular = () => {
                         <SettingsUI.Description className="flex-1 min-w-0">
                             <Typography.Title>{t('Stop speech playback')}</Typography.Title>
                             <Typography.Paragraph>{t('Stop Pocket TTS playback or generation immediately.')}</Typography.Paragraph>
+                            {isWindows && (
+                                <Typography.Paragraph>
+                                    {t('Holding AltGr and pressing the same letter does it with one hand.')}
+                                </Typography.Paragraph>
+                            )}
                         </SettingsUI.Description>
                         <ShortcutButton
                             keyName={t('Stop speech playback')}
@@ -200,6 +205,11 @@ export const ShortcutsRegular = () => {
                         <SettingsUI.Description className="flex-1 min-w-0">
                             <Typography.Title>{t('Pause or resume speech')}</Typography.Title>
                             <Typography.Paragraph>{t('Toggle Pocket TTS pause and resume without changing windows.')}</Typography.Paragraph>
+                            {isWindows && (
+                                <Typography.Paragraph>
+                                    {t('Holding AltGr and pressing the same letter does it with one hand.')}
+                                </Typography.Paragraph>
+                            )}
                         </SettingsUI.Description>
                         <ShortcutButton
                             keyName={t('Pause or resume speech')}
@@ -218,6 +228,9 @@ export const ShortcutsRegular = () => {
                                     <Typography.Title>{t('Read selected text aloud')}</Typography.Title>
                                     <Typography.Paragraph>
                                         {t('Read the focused text selection using Windows Accessibility without changing the clipboard.')}
+                                    </Typography.Paragraph>
+                                    <Typography.Paragraph>
+                                        {t('Holding AltGr and pressing the same letter does it with one hand.')}
                                     </Typography.Paragraph>
                                 </SettingsUI.Description>
                                 <ShortcutButton

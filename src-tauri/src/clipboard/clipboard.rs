@@ -39,6 +39,14 @@ fn paste_with_delay(
     app_settings: &settings::AppSettings,
     macos_delay_ms: u64,
 ) -> Result<(), String> {
+    // Give the focus back to the window that had it when the recording
+    // started, before anything is sent. Without this the paste lands in
+    // whatever the overlay left focused, which in a browser is the address
+    // bar rather than the field being edited.
+    if crate::audio::focus::restore_foreground() {
+        std::thread::sleep(std::time::Duration::from_millis(80));
+    }
+
     if app_settings.paste_method == PasteMethod::Direct {
         return paste_direct(text, app_handle);
     }

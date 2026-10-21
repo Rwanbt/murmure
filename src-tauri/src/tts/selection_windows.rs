@@ -11,7 +11,8 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern,
+    TreeScope_Descendants, UIA_TextPatternId,
 };
 
 const MAX_SELECTED_CHARS: usize = 1_000;
@@ -54,6 +55,35 @@ impl Drop for ComGuard {
     }
 }
 
+/// How many descendants are inspected when the focused element itself does
+/// not carry the selection. Bounded so a huge document cannot turn a keypress
+/// into a long walk.
+const MAX_INSPECTED_DESCENDANTS: i32 = 400;
+
+/// The selected text of one element, when it exposes exactly one non-empty
+/// selection.
+fn selection_of(element: &IUIAutomationElement) -> Option<String> {
+    // The COM calls of the accessibility interfaces are unsafe by nature.
+    unsafe {
+        let pattern: IUIAutomationTextPattern =
+            element.GetCurrentPatternAs(UIA_TextPatternId).ok()?;
+        let ranges = pattern.GetSelection().ok()?;
+        if ranges.Length().ok()? != 1 {
+            return None;
+        }
+        let text = ranges
+            .GetElement(0)
+            .ok()?
+            .GetText((MAX_SELECTED_CHARS + 1) as i32)
+            .ok()?
+            .to_string();
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        Some(trimmed.to_string())
+    }
+}
 /// Run on a dedicated thread: UI Automation COM interfaces are not Send.
 fn capture_selection() -> Result<String, String> {
     unsafe {
@@ -89,23 +119,40 @@ fn capture_selection() -> Result<String, String> {
             return Err("Protected or offscreen text cannot be read".into());
         }
 
-        let pattern: IUIAutomationTextPattern = focused
-            .GetCurrentPatternAs(UIA_TextPatternId)
-            .map_err(|_| "The focused application does not expose a text selection")?;
-        let ranges = pattern
-            .GetSelection()
-            .map_err(|_| "Cannot access selected text")?;
-        let len = ranges.Length().map_err(|_| "Cannot enumerate selection")?;
-        if len != 1 {
-            return Err("Select one contiguous passage to read aloud".into());
+        // Chromium and Electron, which is what most editors and chat clients
+        // are built on, expose the selection on a descendant of the focused
+        // element rather than on the element itself. Asking only the focused
+        // element made "read the selection" answer that the application does
+        // not expose a selection, in exactly the applications people read
+        // from. The search walks down, bounded, and stops at the first
+        // element that carries exactly one non-empty selection.
+        let mut captured = selection_of(&focused);
+        if captured.is_none() {
+            let condition = automation
+                .CreateTrueCondition()
+                .map_err(|_| "Unable to enumerate the focused control")?;
+            if let Ok(descendants) = focused.FindAll(TreeScope_Descendants, &condition) {
+                let count = descendants
+                    .Length()
+                    .unwrap_or(0)
+                    .min(MAX_INSPECTED_DESCENDANTS);
+                for index in 0..count {
+                    let Ok(candidate) = descendants.GetElement(index) else {
+                        continue;
+                    };
+                    if candidate.CurrentIsPassword().map(|value| value.as_bool()) == Ok(true) {
+                        continue;
+                    }
+                    if let Some(text) = selection_of(&candidate) {
+                        captured = Some(text);
+                        break;
+                    }
+                }
+            }
         }
-
-        // Fetch one extra char to detect truncation before reading/speaking.
-        let text = ranges
-            .GetElement(0)
-            .and_then(|range| range.GetText((MAX_SELECTED_CHARS + 1) as i32))
-            .map_err(|_| "Unable to read selected text")?
-            .to_string();
+        let text = captured.ok_or_else(|| {
+            "The focused application does not expose a text selection".to_string()
+        })?;
         // A focus change during the COM call invalidates the user's target.
         // Never read a stale selection after the foreground app changes.
         if !focused
@@ -115,14 +162,10 @@ fn capture_selection() -> Result<String, String> {
         {
             return Err("Selection focus changed while reading".into());
         }
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
-            return Err("The selected text is empty".into());
-        }
-        if trimmed.chars().count() > MAX_SELECTED_CHARS {
+        if text.chars().count() > MAX_SELECTED_CHARS {
             return Err("The selected text exceeds the 1000-character limit".into());
         }
-        Ok(trimmed.to_string())
+        Ok(text)
     }
 }
 
