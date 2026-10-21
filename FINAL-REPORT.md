@@ -37,6 +37,7 @@ Every one of these was a real behaviour defect, not a style issue.
 | The interface offered the runtime installation only when the user agent contained `Windows`, so Linux and macOS users could never install it | **High** | Static review of the screen |
 | The frontend dependency tree had never been audited | **High** | New `osv.dev` audit found 5 advisories |
 | "Clear the model cache" deleted the installed runtime | **Critical** | Tauri's cache and local-data roots are the same directory on Windows |
+| A partially downloaded or unreadable model was presented as "Ready, usable offline" | **High** | The state followed the presence of the directory; an interrupted Hugging Face download leaves a directory with an `<digest>.incomplete` blob, and the first synthesis then failed in front of the user |
 | A rapid second trigger discarded the running recording | **High** | The wake word path lacked the guard the shortcuts have |
 | A hidden but focusable file input trapped keyboard focus | **Medium** | New screen audit |
 | The install progress was a sentence, not a value | **Medium** | Static review |
@@ -88,12 +89,12 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | Packaged application, installed and launched | **PROVEN** | no packaging | no packaging | no |
 | Graphical user journey | **BLOCKED** — headless runner | **BLOCKED** | **BLOCKED** | **BLOCKED** |
 | Audio device, permission refused or revoked, device change | **BLOCKED** — no hardware | **BLOCKED** | **BLOCKED** | **BLOCKED** |
-| STT transcription | **PROVEN** (real engine) | compilation only | compilation only | no |
+| STT transcription | **PROVEN** (real engine on a real reference recording, and on a real capture from this machine's microphone) | compilation only | compilation only | no |
 | Dependency audit | **PROVEN** (Rust + JS) | shared | shared | shared |
 | Contrast | **PROVEN** (measured) | shared | shared | shared |
 | Screen structure | **PROVEN** (133 screens) | shared | shared | shared |
 | Screen-reader reading | **BLOCKED** — needs a real AT | **BLOCKED** | **BLOCKED** | **BLOCKED** |
-| Model lifecycle | **PROVEN** for the states the catalog exposes | **PROVEN** for install/verify | **PROVEN** for install/verify | pinned, not exercised |
+| Model lifecycle | **PROVEN** for every state the cache can justify: `not_installed`, `downloading` (an unfinished `<digest>.incomplete` blob), `corrupted` (an empty or unreadable weight, a dangling snapshot link), `ready`, `in_use`. A partial model is never reported as offline ready | **PROVEN** for install/verify | **PROVEN** for install/verify | pinned, not exercised |
 | Performance | **MEASURED** — the round trip prints the load time, the transcription time and the real time factor (commit `577a0dd`) | same, measured on the Windows runner only | not measured | not measured |
 
 ## 5. Gates

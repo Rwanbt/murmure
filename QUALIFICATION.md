@@ -161,20 +161,20 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 1 | Continuous real-audio CI gate | P0 | DONE | `test/pocket-tts-offline-cache-windows` | #31 | `e26761c` | CI on PR #31 | real French WAV 19 s, cached WAV 25 s, qualification gate pass | historical runs of PRs #33–#39 still show the old skip | GitHub does not re-run CI when only a base branch moves | Merge bottom-up; the gate then covers every later pull request |
 | 2 | Model cache isolation and credential hygiene | P0 | DONE | `fix/pocket-tts-script-powershell-contract` | #40 | `e924b2e` | 11 deterministic checks | green in CI | — | — | — |
 | 3 | Shared structural WAV validator | P0 | DONE | `test/pocket-tts-wav-validator-contract` | #41 | `4506c0c` | 11 deterministic checks | green in CI | — | — | — |
-| 4 | Packaged Windows application | P0 | VALIDATING | `ci/packaged-windows-application` | #42 | `e33d6c7` | CI job `Packaged Windows application` | green on PR #42 | interactive journey | needs a desktop session | Manual protocol in §6 |
+| 4 | Packaged Windows application | P0 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `e913b2b` | the CI job plus a local release build and launch | Job `119192646518`: every step green, including "Install, launch and uninstall the packaged application". Locally: `target/release/murmure.exe`, 27.7 MB, window `Murmure`, 39 threads, 52 MB, no orphan, no data directory created (§6.0) | the interactive journey (steps 2 to 10 and 12 to 13) needs a human at the desktop | — | run §6 |
 | 5 | rustfmt compliance for the T0 gate | P1 | DONE | `chore/rustfmt-pocket-tts-chain` | #43 | `e7eaa0b` | `cargo fmt --check` | 0 differences | — | — | — |
 | 6 | Cache never deletes the runtime | P0 | DONE | `fix/tts-model-cache-preserves-runtime` | #44 | `4553cf8` | 6 deterministic checks | green in CI | — | — | — |
 | 7 | Generation supervision failure modes | P0 | DONE | `test/pocket-tts-generation-supervision` | #45 | `ee3abab` | 5 deterministic checks | green in CI | — | — | — |
-| 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
-| 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
+| 8 | ONNX Runtime download reliability | P1 | DONE | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | the installer, run by three jobs | `install-onnx-runtime.ps1` verifies the archive digest (`0b38df9a…`) and the library digest the engine checks (`dec964ab…`) before anything is used; a mismatch aborts. Exercised by the round-trip, Rodio and packaged jobs in runs `39591303205` and `39593352219` | - | - | - |
+| 9 | Model lifecycle states | P0 | DONE | `fix/dependency-advisories` | #54 | `e913b2b` | 4 deterministic tests plus the 410-test suite | `an_unfinished_blob_is_reported_as_downloading`, `an_empty_weight_file_is_never_reported_as_ready`, `an_empty_weights_directory_is_never_reported_as_ready`, `weights_in_a_subdirectory_are_reported_as_ready`; the dangling-link test is `#[cfg(unix)]` and runs on the Linux job | The state followed the presence of the directory, so a partial download was shown as ready and offline usable. It now reads the `<digest>.incomplete` blob and the readability of every weight | the five states the mission lists as `verifying`, `failed` and `removing` have no signal today: the weights are fetched by the official CLI, and nothing observes that moment | watch the CLI output if those states are required |
 | 10 | Global pause/resume shortcut | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | inherited by the chain | `3ebd585` | `registry.rs` tests plus the 406-test suite | `registers_pause_tts_without_colliding_with_stt_or_stop`, `registers_default_tts_stop_shortcut_without_affecting_stt`, `registers_selection_read_shortcut_without_mutating_stt`; the global hotkey is registered in `registry.rs` and dispatched in `shortcuts.rs` | The journal said TODO; the shortcut was already registered, wired to `TogglePauseTts` and covered by tests. The interface reads it from `SHORTCUT_CONFIGS.ttsPause` | pressing the real hotkey during playback needs a desktop | the manual row in 6.1 |
 | 11 | STT qualification | P0 | DONE | `fix/dependency-advisories` | #54 | `5f5b474` | the whole unit suite plus a real French recording through the pinned model | job `119192646552` at `5f5b474`: `1 passed; 0 failed; 404 filtered out`, transcription `"bonjour ceci est un essai de synthese vocale locale"`, engine load 2.27 s, 0.83 s for 3.64 s of audio (real time factor 0.228) | Two stacked defects held the claim: the test was never registered (`running 0 tests` in run `39587708682`), then the job had never installed the ONNX Runtime the engine loads (`The ONNX Runtime is not installed` in run `39589886791`). Both fixed in `0264519` and `5f5b474` | the device and permission scenarios stay manual | the manual microphone and device scenarios (6.1) |
-| 12 | WCAG 2.2 AA audit | P1 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `0ce73c9` | contrast measured on the tokens, static audit of 133 screens | `check-contrast.py`: 9 pairs above their thresholds; `audit-accessibility.py`: 133 screens, 0 finding | - | screen-reader reading needs a manual pass | - | record the manual screen-reader pass |
-| 13 | Dependency audit | P1 | VALIDATING | `fix/dependency-advisories` | #54 | `2d3bf46` | the RustSec advisory database | running | eight advisories need a major upgrade of a parent dependency | — | tracked and listed in the audit gate |
+| 12 | WCAG 2.2 AA audit | P1 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `e913b2b` | contrast measured on the tokens, static audit of 133 screens | `check-contrast.py`: 9 pairs above their thresholds; `audit-accessibility.py`: 133 screens, 0 finding | screen-reader reading needs a manual pass | the announcement order cannot be measured statically | run §6.2 |
+| 13 | Dependency audit | P1 | DONE | `fix/dependency-advisories` | #54 | `b02b79e` | RustSec and `osv.dev` | `Dependency audit` and `JavaScript dependency audit` green at `5f5b474` and `9ce4800`; the eight Rust and two JavaScript advisories are accepted with a written reason in the job, and any unlisted advisory fails the build | the accepted advisories need a major upgrade of a parent dependency | tracked and listed in the audit gate | revisit when the parents move |
 | 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `f5cdbc8` | — | this document | — | — | — |
-| 15 | Rapid triggers keep the recording | P0 | VALIDATING | `fix/stt-second-trigger-keeps-recording` | #51 | `d6c5548` | 4 unit tests | running | “” | “” | “” |
-| 16 | French Pocket TTS errors | P1 | VALIDATING | `fix/tts-localized-errors` | #53 | `c2013c8` | the type check and the lint | running | “” | “” | “” |
-| 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `ddaa83e` | the real generated recording | running | “” | “” | “” |
+| 15 | Rapid triggers keep the recording | P0 | DONE | `fix/stt-second-trigger-keeps-recording` | #51 | `d6c5548` | 4 unit tests | `a_second_trigger_cannot_claim_a_running_session`, `a_finished_session_can_be_claimed_again`, `exactly_one_of_two_concurrent_claims_wins`, `invalidating_a_session_advances_the_generation`, all green in the 410-test suite | pressing the real shortcut four times needs a desktop | §6.1 row 14 | - |
+| 16 | French Pocket TTS errors | P1 | DONE | `fix/tts-localized-errors` | #53 | `c2013c8` | the type check, the lint and the locale file | `npx tsc --noEmit` and `eslint --max-warnings 0` both exit 0 locally; `fr.json` holds 749 keys, including the two added for the new model states | - | - | - |
+| 17 | Real French WAV through the production Rodio decoder | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `ddaa83e` | the real generated recording, decoded by Rodio | job `Pocket TTS real French WAV decoded by Rodio` green at `5f5b474` and `9ce4800` | - | the runner has no audio device, so the transport is checked on an in-memory queue | - |
 | 18 | The engine does not depend on the graphics stack | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `c99f3e4` | the whole unit suite, 400 passed | `cargo test --lib` | the packaged application has to ship the runtime | - | validate the packaged installer |
 | 19 | No binary depends on the common controls task dialog | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `cdb5930` | the whole unit suite, 400 passed and 0 failed | `cargo test --lib` | - | - | - |
 | 20 | Pocket TTS on Linux and macOS | P2 | DONE (x86_64 Linux, aarch64 macOS) | `fix/dependency-advisories` | #54 | `3ec8e7d` | 11 validator checks, 4 archive digests and 4 executable digests pinned, 2 real French syntheses | job `119154672419` (Linux): `24000 Hz, 1 channel(s), 16 bits, 3.48 s, peak 0.405`; job `119154672275` (macOS): same recording, executable `6a7a6cb0…` | aarch64 Linux and x86_64 macOS are pinned but no runner exercises them | - | add those two runners or record them as unqualified |
@@ -254,6 +254,27 @@ Every claim in this document can be traced to a job in
 
 This protocol covers what the headless CI cannot prove. It must be run on a
 Windows machine with a visible desktop, a speaker and a microphone.
+
+### 6.0 Executed on a real Windows desktop
+
+Steps 1, 11 and part of the install path were executed on the project owner's
+machine, so they are evidence rather than protocol.
+
+- Build: `pnpm build` then `pnpm tauri build --no-bundle` on Windows with the
+  pinned Rust toolchain. The release profile finished in 19 min 34 s and
+  produced `target/release/murmure.exe`, 27.7 MB.
+- Launch: the executable was started and observed for 12 s. It reported a
+  main window titled `Murmure`, 39 threads and a 52 MB working set, so the
+  window, the tray and the audio stack all came up.
+- Shutdown: `CloseMainWindow` does not stop a tray application, as designed;
+  the process was then asked to stop, and `Get-Process murmure` returned zero
+  entries afterwards. No orphan process remained.
+- Leftovers: no `%LOCALAPPDATA%\com.murmure.app`, no `%APPDATA%\murmure` and no
+  audio cache directory existed before the launch, and none existed after it,
+  so a first start without consent writes nothing.
+- Not executed here: the installer (the CI job `119192646518` builds, installs,
+  launches and uninstalls it, every step green), and steps 2 to 10 and 12 to 13,
+  which need a human to click through the interface.
 
 1. Build and install the packaged application
    (`pnpm tauri build --bundles nsis`, then run the NSIS installer).
