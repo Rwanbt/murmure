@@ -45,14 +45,28 @@ command. **PARTIAL** — a real part is proven, a named part is not.
 | Audio device (speaker / microphone) | MANUAL | MANUAL | MANUAL |
 | Packaged application | **PROVEN** (NSIS bundle, installed and launched) | OPEN | OPEN |
 
-**The verified Pocket TTS runtime exists only for Windows.** The Tauri
-configuration pins one official Kyutai release,
-`pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip` (archive SHA-256
-`b3b2faa7…`, extracted executable SHA-256 `9b52ad9d…`). No official Linux
-or macOS build is pinned, so the Rust side refuses to run on those
-platforms instead of accepting an unverified binary
-(`src-tauri/src/tts/preview.rs`, `binary_path`). **Linux and macOS
-functional parity is therefore not claimed.**
+**The official Kyutai release publishes a verified Pocket TTS runtime for
+five targets, not only for Windows.** Release `v4.0.0` carries binaries
+whose digests are published in its `SHA256SUMS`:
+
+| Target | Pinned archive SHA-256 |
+| --- | --- |
+| `x86_64-pc-windows-msvc` | `b3b2faa7…` |
+| `x86_64-unknown-linux-gnu` | `1336a77e60ce11650a5a3dc354770155a345bfa797f7a05d10bc5b1bcfe0d7e3` |
+| `aarch64-unknown-linux-gnu` | `644a9478d7cbd7d432f5a4898007aa7d178a897a65aef7ebc64557e0b1a1739a` |
+| `x86_64-apple-darwin` | `3a908c524d1ca976eb5f699c523fbdd47a5fa029ccc3bd9f6197b8f8d91f01c1` |
+| `aarch64-apple-darwin` | `e209feca849d53df18eba89f5bd4c253c1be62a6c54794db5654635c95e02990` |
+
+A previous revision of this report claimed that no official Linux or macOS
+build existed and that functional parity was therefore impossible. That
+claim was wrong: it was inferred from the single archive that this fork had
+pinned, not from the release itself. The Windows runtime is the only one
+that is wired, verified and exercised today; the other four are published
+and pinned above but **not yet qualified**. Until they are, the Rust side
+still refuses to run TTS on those platforms rather than accepting an
+unverified binary (`src-tauri/src/tts/preview.rs`, `binary_path`), so
+Linux and macOS TTS parity stays **not claimed** — for lack of
+qualification, not for lack of an official build.
 
 ### 2.2 Features
 
@@ -196,7 +210,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | The global pause/resume shortcut is missing from the head chain | MV-009 is a P0 issue | The implementation exists in `feat/tts-pause-resume-hotkey` (PR #36), which is **not** an ancestor of the current chain head. |
 | The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | `test/pocket-tts-real-wav-rodio` (PR #35) is not an ancestor of the chain head. |
 | The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Partly closed by PR #48: the catalog, the local state and the offline availability are exposed. The states that need weight integrity or download tracking remain open. |
-| Linux and macOS have no pinned Pocket TTS build | No TTS outside Windows | No official Kyutai release is pinned for those platforms; using an unverified binary is refused by design. |
+| The Linux and macOS Pocket TTS runtimes are published but not qualified | No TTS outside Windows today | Correction of an earlier claim: release `v4.0.0` does publish `x86_64`/`aarch64` builds for Linux and macOS, with digests in its `SHA256SUMS`. They are pinned in this report but no verification script, installer or CI job exercises them yet, so the Rust side still refuses to run TTS there. Tracked as the cross-platform TTS workstream. |
 | The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | Closed by PR #52, which transcribes real French speech with the pinned Parakeet model, and by the STT map in §2.4. The device, permission and interruption scenarios stay manual. |
 | No dependency audit runs in CI | Known dependency vulnerabilities may go unnoticed | `cargo audit` / `osv-scanner` are not wired. |
 | Error messages from the Rust backend reach the French interface untranslated | Reduced UX quality | The backend returns English strings; the frontend shows them verbatim. |
@@ -276,7 +290,8 @@ that the Definition of Done is not yet met:
 
 The verdict can move to **CONDITIONAL GO** once the manual protocol in §6
 has been executed and recorded, and to **GO** once the remaining `TODO`
-rows of §3 are closed with evidence. The limitation that cannot be closed
-by this fork is the absence of an official Pocket TTS build for Linux and
-macOS; that is a platform limit, not a defect, and it is recorded rather
-than papered over.
+rows of §3 are closed with evidence. The Linux and macOS TTS gap is not a
+platform limit: the official release publishes those binaries, and the
+digests are pinned above. Closing it needs a POSIX verification script, a
+POSIX installer and a real-audio CI job per platform — work that is
+identified and tracked, not impossible.
