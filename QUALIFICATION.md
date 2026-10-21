@@ -276,7 +276,9 @@ machine, so they are evidence rather than protocol.
   12 s. It was then stopped, and `Get-Process murmure` returned zero entries.
 - Uninstall: `uninstall.exe /S` exited 0; the install directory and the
   uninstall registry key were both gone afterwards. No orphan process
-  remained.
+  remained. A Start Menu entry, a desktop shortcut and a process were all
+  absent too, so nothing of the application survived the uninstall except the
+  settings directory named below, which is deliberate.
 - Persisted data: a first start creates `%APPDATA%\com.al1x-ai.murmure` with
   `settings.json` (59 keys: shortcuts, modes, text to speech preferences),
   `dictionary.json`, `formatting_rules.json`, `llm_connect.json` and
