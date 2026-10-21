@@ -375,7 +375,7 @@ jobs:
                       ./scripts/verify-pocket-tts-windows.ps1 -Destination $destination -GenerateFrench -KeepGeneratedWav
                       if (-not (Test-Path -LiteralPath $wav)) { throw 'Generated French WAV missing' }
                       $env:MURMURE_TTS_FIXTURE_WAV = $wav
-                      cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests::official_french_wav_decodes_and_obeys_transport -- --exact --ignored --nocapture
+                      cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests::official_french_wav_decodes_with_the_production_decoder -- --exact --ignored --nocapture
                       if ($LASTEXITCODE -ne 0) { throw 'Official French WAV Rodio transport contract failed' }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
