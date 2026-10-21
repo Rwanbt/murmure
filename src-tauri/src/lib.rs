@@ -35,12 +35,15 @@ use log::{error, info, warn};
 use model::Model;
 use overlay::tray::setup_tray;
 use smartmic::SmartMicState;
-use tts::preview::{pocket_tts_pause, pocket_tts_cancel_install, pocket_tts_install, pocket_tts_preview, pocket_tts_resume, pocket_tts_speak, pocket_tts_status, pocket_tts_stop, pocket_tts_clear_model_cache};
 use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{DeviceEventFilter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
+use tts::preview::{
+    pocket_tts_cancel_install, pocket_tts_clear_model_cache, pocket_tts_install, pocket_tts_pause,
+    pocket_tts_preview, pocket_tts_resume, pocket_tts_speak, pocket_tts_status, pocket_tts_stop,
+};
 use wake_word::types::WakeWordState;
 
 fn show_main_window(app: &tauri::AppHandle) {

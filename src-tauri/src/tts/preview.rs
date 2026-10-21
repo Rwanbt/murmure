@@ -23,7 +23,8 @@ const MAX_GENERATION: Duration = Duration::from_secs(600);
 // Derived from the v4.0.0 official Windows archive (SHA256 of archive verified
 // before extraction in scripts/verify-pocket-tts-windows.ps1).
 #[cfg(target_os = "windows")]
-pub(super) const WINDOWS_SIDECAR_SHA256: &str = "9b52ad9d8721869c0adcb98e62a5e89e8fbfef0abdc397b4189db411456c6023";
+pub(super) const WINDOWS_SIDECAR_SHA256: &str =
+    "9b52ad9d8721869c0adcb98e62a5e89e8fbfef0abdc397b4189db411456c6023";
 
 // Serialize model-consent revocation against queuing new requests. The worker
 // remains independent: never hold this lock while generating or playing audio.
@@ -125,19 +126,29 @@ fn locate_sidecar(app: &AppHandle) -> Result<PathBuf, String> {
     // Prefer the app's dedicated user-local install directory (never PATH).
     #[cfg(target_os = "windows")]
     {
-        let user_install = app.path().app_local_data_dir()
+        let user_install = app
+            .path()
+            .app_local_data_dir()
             .map_err(|_| "Unable to locate the application data directory".to_string())?
-            .join("pocket-tts").join("bin").join("pocket-tts.exe");
+            .join("pocket-tts")
+            .join("bin")
+            .join("pocket-tts.exe");
         if user_install.exists() {
             return Ok(user_install);
         }
     }
     let _ = app;
     // Keep compatibility with previously deployed verified sidecars.
-    let executable = if cfg!(windows) { "pocket-tts.exe" } else { "pocket-tts" };
-    let application = std::env::current_exe()
-        .map_err(|_| "Unable to locate Murmure executable".to_string())?;
-    let dir = application.parent().ok_or("Unable to locate application directory")?;
+    let executable = if cfg!(windows) {
+        "pocket-tts.exe"
+    } else {
+        "pocket-tts"
+    };
+    let application =
+        std::env::current_exe().map_err(|_| "Unable to locate Murmure executable".to_string())?;
+    let dir = application
+        .parent()
+        .ok_or("Unable to locate application directory")?;
     Ok(dir.join(executable))
 }
 
@@ -148,7 +159,8 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
     let mut hash = Sha256::new();
     let mut block = [0u8; 64 * 1024];
     loop {
-        let bytes = file.read(&mut block)
+        let bytes = file
+            .read(&mut block)
             .map_err(|_| "Unable to hash Pocket TTS executable".to_string())?;
         if bytes == 0 {
             break;
@@ -185,7 +197,10 @@ fn binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = app;
-        Err("Verified Pocket TTS binary is not yet configured for this operating system".to_string())
+        Err(
+            "Verified Pocket TTS binary is not yet configured for this operating system"
+                .to_string(),
+        )
     }
 }
 
@@ -210,7 +225,8 @@ fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
 fn configure_model_source(command: &mut Command, cache_dir: &Path) {
     // Isolate Murmure's model cache from system-wide Hugging Face credentials.
     // Do not inherit a personal token or an alternative untrusted model host.
-    command.env("HF_HOME", cache_dir)
+    command
+        .env("HF_HOME", cache_dir)
         .env("HF_ENDPOINT", "https://huggingface.co")
         .env_remove("HF_TOKEN")
         .env_remove("HF_TOKEN_PATH")
@@ -237,7 +253,9 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     };
     // The first, user-approved invocation may download the public model.
     // Restrict the CLI to a dedicated app cache with no inherited HF login.
-    let cache_dir = app.path().app_cache_dir()
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
         .map_err(|_| "Unable to locate Murmure's model cache".to_string())?
         .join("pocket-tts");
     std::fs::create_dir_all(&cache_dir)
@@ -254,10 +272,15 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
         .map_err(|_| "Unable to start Pocket TTS".to_string())?;
     // Kyutai's --text - reads stdin. Never put document text in argv, where
     // other processes can inspect it through process listings.
-    let write_result = child.stdin.take()
+    let write_result = child
+        .stdin
+        .take()
         .ok_or_else(|| "Pocket TTS stdin was unavailable".to_string())
-        .and_then(|mut stdin| stdin.write_all(text.as_bytes())
-            .map_err(|_| "Unable to send text to Pocket TTS".to_string()));
+        .and_then(|mut stdin| {
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|_| "Unable to send text to Pocket TTS".to_string())
+        });
     if let Err(reason) = write_result {
         let _ = child.kill();
         let _ = child.wait();
@@ -375,8 +398,11 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     let is_preview = matches!(&action, Request::Preview | Request::Speak(_));
     // Gate selection and synthesis dispatch atomically with permission changes.
     let _approval_guard = if is_preview {
-        Some(MODEL_APPROVAL_LOCK.lock()
-            .map_err(|_| "TTS approval state is unavailable".to_string())?)
+        Some(
+            MODEL_APPROVAL_LOCK
+                .lock()
+                .map_err(|_| "TTS approval state is unavailable".to_string())?,
+        )
     } else {
         None
     };
@@ -407,12 +433,19 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
 /// Remove only Murmure's isolated Pocket TTS cache, never the user's shared HF cache.
 #[tauri::command]
 pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
-    let _guard = MODEL_APPROVAL_LOCK.lock()
+    let _guard = MODEL_APPROVAL_LOCK
+        .lock()
         .map_err(|_| "TTS model cache state is unavailable".to_string())?;
-    if app.state::<PocketPreviewState>().busy.load(Ordering::Acquire) {
+    if app
+        .state::<PocketPreviewState>()
+        .busy
+        .load(Ordering::Acquire)
+    {
         return Err("Stop Pocket TTS playback before clearing its model cache".into());
     }
-    let parent = app.path().app_cache_dir()
+    let parent = app
+        .path()
+        .app_cache_dir()
         .map_err(|_| "Unable to locate Murmure's model cache".to_string())?;
     clear_owned_model_cache(&parent)
 }
@@ -432,7 +465,6 @@ fn clear_owned_model_cache(parent: &Path) -> Result<bool, String> {
     std::fs::remove_dir_all(&cache)
         .map_err(|_| "Unable to clear the Pocket TTS model cache".to_string())?;
     Ok(true)
-
 }
 
 #[tauri::command]
@@ -478,7 +510,8 @@ mod tests {
 
     #[test]
     fn clearing_owned_model_cache_preserves_sibling_data_and_is_idempotent() {
-        let root = std::env::temp_dir().join(format!("murmure-cache-test-{}", uuid::Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("murmure-cache-test-{}", uuid::Uuid::new_v4()));
         let owned = root.join("pocket-tts");
         let sibling = root.join("other-app");
         std::fs::create_dir_all(&owned).unwrap();
@@ -488,7 +521,10 @@ mod tests {
         assert_eq!(clear_owned_model_cache(&root).unwrap(), true);
         assert!(!owned.exists());
         assert_eq!(clear_owned_model_cache(&root).unwrap(), false);
-        assert_eq!(std::fs::read(sibling.join("important.bin")).unwrap(), b"keep");
+        assert_eq!(
+            std::fs::read(sibling.join("important.bin")).unwrap(),
+            b"keep"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -513,7 +549,10 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("pocket-tts"), b"not a cache directory").unwrap();
         assert!(clear_owned_model_cache(&root).is_err());
-        assert_eq!(std::fs::read(root.join("pocket-tts")).unwrap(), b"not a cache directory");
+        assert_eq!(
+            std::fs::read(root.join("pocket-tts")).unwrap(),
+            b"not a cache directory"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -521,17 +560,26 @@ mod tests {
     fn model_source_does_not_inherit_user_huggingface_credentials() {
         let mut command = Command::new("pocket-tts");
         configure_model_source(&mut command, Path::new("isolated-cache"));
-        let entries: std::collections::HashMap<_, _> = command.get_envs()
-            .map(|(name, value)| (name.to_string_lossy().into_owned(),
-                                    value.map(|v| v.to_string_lossy().into_owned())))
+        let entries: std::collections::HashMap<_, _> = command
+            .get_envs()
+            .map(|(name, value)| {
+                (
+                    name.to_string_lossy().into_owned(),
+                    value.map(|v| v.to_string_lossy().into_owned()),
+                )
+            })
             .collect();
         assert_eq!(entries.get("HF_TOKEN"), Some(&None));
         assert_eq!(entries.get("HF_TOKEN_PATH"), Some(&None));
         assert_eq!(entries.get("HUGGINGFACE_HUB_CACHE"), Some(&None));
-        assert_eq!(entries.get("HF_ENDPOINT"),
-                   Some(&Some("https://huggingface.co".to_string())));
-        assert_eq!(entries.get("HF_HOME"),
-                   Some(&Some("isolated-cache".to_string())));
+        assert_eq!(
+            entries.get("HF_ENDPOINT"),
+            Some(&Some("https://huggingface.co".to_string()))
+        );
+        assert_eq!(
+            entries.get("HF_HOME"),
+            Some(&Some("isolated-cache".to_string()))
+        );
     }
 
     #[test]
@@ -551,8 +599,10 @@ mod tests {
 
     #[test]
     fn verified_sidecar_rejects_tampering_and_untrusted_files() {
-        let file = std::env::temp_dir()
-            .join(format!("murmure-tts-integrity-{}.bin", uuid::Uuid::new_v4()));
+        let file = std::env::temp_dir().join(format!(
+            "murmure-tts-integrity-{}.bin",
+            uuid::Uuid::new_v4()
+        ));
         std::fs::write(&file, b"abc").unwrap();
         let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         assert!(verify_sidecar(&file, expected).is_ok());
@@ -567,17 +617,23 @@ mod tests {
         assert!(verify_sidecar(
             Path::new("nonexistent-murmure-tts-runtime-for-test.exe"),
             "invalid",
-        ).is_err());
+        )
+        .is_err());
         #[cfg(target_os = "windows")]
         {
             assert_eq!(WINDOWS_SIDECAR_SHA256.len(), 64);
-            assert!(WINDOWS_SIDECAR_SHA256.bytes().all(|b| b.is_ascii_hexdigit()));
+            assert!(WINDOWS_SIDECAR_SHA256
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit()));
         }
     }
 
     #[test]
     fn speak_filters_obvious_secrets_and_requires_text() {
-        assert_eq!(checked_text("Bonjour à tous.\npassword=nepaslire").unwrap(), "Bonjour à tous.");
+        assert_eq!(
+            checked_text("Bonjour à tous.\npassword=nepaslire").unwrap(),
+            "Bonjour à tous."
+        );
         assert!(checked_text("password=secret").is_err());
         assert!(checked_text(&"é".repeat(MAX_SPEECH_CHARS + 1)).is_err());
     }
