@@ -121,7 +121,7 @@ pub fn pocket_tts_cancel_install() -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        false
+        super::install_posix::cancel_install()
     }
 }
 
@@ -133,8 +133,7 @@ pub async fn pocket_tts_install(app: AppHandle) -> Result<(), String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        Err("Verified Pocket TTS installation is currently supported only on Windows".into())
+        super::install_posix::install(app).await
     }
 }
 
@@ -229,21 +228,24 @@ fn binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     if !cpu_compatible() {
         return Err("This Pocket TTS binary requires AVX2 CPU support".to_string());
     }
-    // Only the official Windows binary has a vetted digest. Do not silently
-    // allow an arbitrary executable on macOS/Linux until releases are pinned.
     #[cfg(target_os = "windows")]
     {
         let path = locate_sidecar(app)?;
         verify_sidecar(&path, WINDOWS_SIDECAR_SHA256)?;
         Ok(path)
     }
+    // The official release publishes a build for Linux and macOS too, and
+    // the digest of each of them is pinned. A target whose digest is not
+    // pinned is refused rather than trusted.
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        Err(
-            "Verified Pocket TTS binary is not yet configured for this operating system"
-                .to_string(),
-        )
+        let path = locate_sidecar(app)?;
+        let expected =
+            super::install_posix::executable_sha256_for_current_target().ok_or_else(|| {
+                "The official Pocket TTS release has no pinned build for this platform".to_string()
+            })?;
+        verify_sidecar(&path, expected)?;
+        Ok(path)
     }
 }
 
@@ -674,7 +676,7 @@ fn install_active() -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        false
+        super::install_posix::install_active()
     }
 }
 
