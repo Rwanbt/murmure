@@ -65,6 +65,7 @@ fn normalize(text: &str) -> String {
         .join(" ")
 }
 
+#[test]
 #[ignore = "requires the pinned Parakeet model and a real French recording"]
 fn real_french_speech_is_transcribed() {
     let model_dir = std::env::var(MODEL_DIR_ENV)

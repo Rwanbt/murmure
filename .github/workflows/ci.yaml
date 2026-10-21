@@ -19,6 +19,13 @@ jobs:
             # keyboard reachability, accessible names and focus order.
             - name: Audit the screens for keyboard, naming and focus findings
               run: python3 scripts/audit-accessibility.py --root src/features
+            # A function that carries #[ignore] but not #[test] is never
+            # registered: cargo reports 'running 0 tests' and succeeds, so the
+            # job that was supposed to prove something stays green while
+            # proving nothing. That happened here and was silent for several
+            # runs, so it is checked mechanically.
+            - name: Verify that every ignored test is registered
+              run: python3 scripts/check-ignored-tests.py --root src-tauri/src
 
             - uses: actions/setup-node@v4
               with:
@@ -278,8 +285,26 @@ jobs:
                       $env:MURMURE_STT_FIXTURE_WAV = $wav
                       $env:MURMURE_STT_MODEL_DIR = Join-Path $env:GITHUB_WORKSPACE 'resources\parakeet-tdt-0.6b-v3-int8'
                       $env:MURMURE_STT_TOKENIZER = Join-Path $env:GITHUB_WORKSPACE 'resources\tokenizer.json'
-                      cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_french_speech_is_transcribed -- --exact --ignored --nocapture
-                      if ($LASTEXITCODE -ne 0) { throw 'The real French round trip failed' }
+                      # The output is captured so the job can prove that the
+                      # test really ran. A function that carries #[ignore] but
+                      # not #[test] is never registered: cargo then reports
+                      # 'running 0 tests' and exits successfully, so the job used
+                      # to stay green while proving nothing. That is the false
+                      # validation this project forbids, so the number of tests
+                      # that actually ran is asserted here.
+                      $output = cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_french_speech_is_transcribed -- --exact --ignored --nocapture 2>&1 | Out-String
+                      $exit = $LASTEXITCODE
+                      Write-Output $output
+                      if ($exit -ne 0) {
+                          # The Windows loader names the library and the entry
+                          # point it could not resolve, which cargo does not
+                          # report. The diagnosis is needed to fix the build.
+                          ./scripts/diagnose-windows-test-launch.ps1
+                          throw 'The real French round trip failed'
+                      }
+                      if ($output -notmatch '1 passed') {
+                          throw 'The real French round trip ran no test, so it proved nothing'
+                      }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
