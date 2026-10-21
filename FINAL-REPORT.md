@@ -41,6 +41,8 @@ Every one of these was a real behaviour defect, not a style issue.
 | The frontend dependency tree had never been audited | **High** | New `osv.dev` audit found 5 advisories |
 | "Clear the model cache" deleted the installed runtime | **Critical** | Tauri's cache and local-data roots are the same directory on Windows |
 | A partially downloaded or unreadable model was presented as "Ready, usable offline" | **High** | The state followed the presence of the directory; an interrupted Hugging Face download leaves a directory with an `<digest>.incomplete` blob, and the first synthesis then failed in front of the user |
+| The dictated words were written to the debug log | **High** | Three `debug!` statements printed the transcription itself. A log file outlives the audio it came from and travels into bug reports |
+| Two tests were ignored with a reason and had no runner at all | **High** | Neither installer test was ever handed the archive it needs, so both had been skipped silently since they were written |
 | A rapid second trigger discarded the running recording | **High** | The wake word path lacked the guard the shortcuts have |
 | A hidden but focusable file input trapped keyboard focus | **Medium** | New screen audit |
 | The install progress was a sentence, not a value | **Medium** | Static review |
@@ -103,8 +105,8 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | STT transcription | **PROVEN** (real engine on a real reference recording, and on a real capture from this machine's microphone) | compilation only | compilation only | no |
 | Security: child processes | **PROVEN** — the CLI receives the text on stdin rather than in its arguments, no inherited Hugging Face credential, timeouts on generation | shared | shared | shared |
 | Security: file system | **PROVEN** — junction and reparse point refused, atomic publication, size limit, path validated before removal | shared | shared | shared |
-| Security: Tauri surface | **PROVEN** — every command validates its arguments in Rust, the cache path is resolved from the backend | shared | shared | shared |
-| Security: privacy | **PROVEN** — no recording, transcript or spoken text is logged, and the settings directory holds none of them (§6.0) | shared | shared | shared |
+| Security: Tauri surface | **PROVEN** for the client facing surface: the speech input is bounded to 1 000 characters, the selection to 1 000, the archives to 16 MB on Windows and 64 MB elsewhere, and the cache path is resolved by the backend rather than accepted from the interface | shared | shared | shared |
+| Security: privacy | **PROVEN** after `bb1d067`: no recording, no transcript and no spoken text is logged, and the settings directory holds none of them (§6.0) | shared | shared | shared |
 | Dependency audit | **PROVEN** (Rust + JS) | shared | shared | shared |
 | Contrast | **PROVEN** (measured) | shared | shared | shared |
 | Screen structure | **PROVEN** (133 screens) | shared | shared | shared |
