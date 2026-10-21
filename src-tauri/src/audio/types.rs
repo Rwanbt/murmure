@@ -232,7 +232,8 @@ mod tests {
             .collect();
         let winners = workers
             .into_iter()
-            .filter(|worker| worker.join().unwrap())
+            .map(|worker| worker.join().unwrap())
+            .filter(|won| *won)
             .count();
         assert_eq!(
             winners, 1,
