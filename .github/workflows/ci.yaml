@@ -209,6 +209,32 @@ jobs:
               with:
                   workspaces: './src-tauri -> target'
 
+            # The prebuilt ONNX Runtime that the build script downloads on
+            # Windows is compiled with the DirectML execution provider, so it
+            # pulls the DirectX 12 libraries into the import table of every
+            # binary that links it. The library DirectML.dll needs the entry
+            # point D3D12SerializeVersionedRootSignature from d3d12.dll, and a
+            # Windows installation whose d3d12.dll does not export it refuses to
+            # start the program with STATUS_ENTRYPOINT_NOT_FOUND, even though the
+            # speech recognition is a pure CPU workload. The official CPU-only
+            # distribution has no DirectX dependency, and the engine uses it.
+            - name: Install the CPU-only ONNX Runtime
+              shell: pwsh
+              run: |
+                  $runtime = Join-Path $env:RUNNER_TEMP 'onnxruntime'
+                  ./scripts/install-onnx-runtime.ps1 -Destination $runtime
+                  $library = Join-Path $runtime 'onnxruntime-win-x64-1.23.2\lib'
+                  # The runtime is shipped with the application, in the same
+                  # directory as the other resources, so the installer puts it
+                  # where the application looks for it.
+                  $resources = Join-Path $env:GITHUB_WORKSPACE 'resources\onnxruntime'
+                  New-Item -ItemType Directory -Force -Path $resources | Out-Null
+                  Copy-Item (Join-Path $library 'onnxruntime*.dll') -Destination $resources -Force
+                  # The runtime is loaded at runtime, and the path tells the
+                  # loader which file to load.
+                  $dll = Join-Path $resources 'onnxruntime.dll'
+                  "ORT_DYLIB_PATH=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  $library | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
               shell: pwsh
@@ -253,6 +279,28 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+            # The prebuilt ONNX Runtime that the build script downloads on
+            # Windows is compiled with the DirectML execution provider, so it
+            # pulls the DirectX 12 libraries into the import table of every
+            # binary that links it. The library DirectML.dll needs the entry
+            # point D3D12SerializeVersionedRootSignature from d3d12.dll, and a
+            # Windows installation whose d3d12.dll does not export it refuses to
+            # start the program with STATUS_ENTRYPOINT_NOT_FOUND, even though the
+            # speech recognition is a pure CPU workload. The official CPU-only
+            # distribution has no DirectX dependency, and the engine uses it.
+            - name: Install the CPU-only ONNX Runtime
+              shell: pwsh
+              run: |
+                  $runtime = Join-Path $env:RUNNER_TEMP 'onnxruntime'
+                  ./scripts/install-onnx-runtime.ps1 -Destination $runtime
+                  $library = Join-Path $runtime 'onnxruntime-win-x64-1.23.2\lib'
+                  # The runtime is loaded at runtime, and the path tells the
+                  # loader which file to load.
+                  $dll = Join-Path $library 'onnxruntime.dll'
+                  "ORT_DYLIB_PATH=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  # The providers library sits next to the runtime and is
+                  # loaded with it.
+                  $library | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
             - name: Build required local frontend resources
               shell: pwsh
               run: |
@@ -274,7 +322,13 @@ jobs:
                       if (-not (Test-Path -LiteralPath $wav)) { throw 'Generated French WAV missing' }
                       $env:MURMURE_TTS_FIXTURE_WAV = $wav
                       cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests::official_french_wav_decodes_with_the_production_decoder -- --exact --ignored --nocapture
-                      if ($LASTEXITCODE -ne 0) { throw 'Official French WAV Rodio transport contract failed' }
+                      if ($LASTEXITCODE -ne 0) {
+                          # The Windows loader names the library and the entry
+                          # point it could not resolve, which cargo does not
+                          # report. The diagnosis is needed to fix the build.
+                          ./scripts/diagnose-windows-test-launch.ps1
+                          throw 'Official French WAV Rodio transport contract failed'
+                      }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_TTS_FIXTURE_WAV -ErrorAction SilentlyContinue
