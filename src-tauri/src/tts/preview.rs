@@ -111,6 +111,10 @@ pub struct PocketTtsRuntimeStatus {
     installed: bool,
     verified: bool,
     cpu_compatible: bool,
+    /// Whether the official release publishes a runtime for this platform.
+    /// A target that is not pinned reports `false`, so the interface does
+    /// not offer an installation that could never succeed.
+    platform_supported: bool,
 }
 
 #[tauri::command]
@@ -121,7 +125,7 @@ pub fn pocket_tts_cancel_install() -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        false
+        super::install_posix::cancel_install()
     }
 }
 
@@ -133,8 +137,7 @@ pub async fn pocket_tts_install(app: AppHandle) -> Result<(), String> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        Err("Verified Pocket TTS installation is currently supported only on Windows".into())
+        super::install_posix::install(app).await
     }
 }
 
@@ -144,6 +147,7 @@ pub fn pocket_tts_status(app: AppHandle) -> PocketTtsRuntimeStatus {
         installed: locate_sidecar(&app).is_ok_and(|path| path.is_file()),
         verified: binary_path(&app).is_ok(),
         cpu_compatible: cpu_compatible(),
+        platform_supported: platform_has_pinned_runtime(),
     }
 }
 
@@ -229,21 +233,24 @@ fn binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     if !cpu_compatible() {
         return Err("This Pocket TTS binary requires AVX2 CPU support".to_string());
     }
-    // Only the official Windows binary has a vetted digest. Do not silently
-    // allow an arbitrary executable on macOS/Linux until releases are pinned.
     #[cfg(target_os = "windows")]
     {
         let path = locate_sidecar(app)?;
         verify_sidecar(&path, WINDOWS_SIDECAR_SHA256)?;
         Ok(path)
     }
+    // The official release publishes a build for Linux and macOS too, and
+    // the digest of each of them is pinned. A target whose digest is not
+    // pinned is refused rather than trusted.
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = app;
-        Err(
-            "Verified Pocket TTS binary is not yet configured for this operating system"
-                .to_string(),
-        )
+        let path = locate_sidecar(app)?;
+        let expected =
+            super::install_posix::executable_sha256_for_current_target().ok_or_else(|| {
+                "The official Pocket TTS release has no pinned build for this platform".to_string()
+            })?;
+        verify_sidecar(&path, expected)?;
+        Ok(path)
     }
 }
 
@@ -666,6 +673,22 @@ fn is_reparse_point(_metadata: &std::fs::Metadata) -> bool {
     false
 }
 
+/// Whether the official release publishes a runtime for this platform.
+///
+/// The installer knows the digest of every target it accepts, so the
+/// capability is asked of the installer instead of being guessed from the
+/// name of the operating system.
+fn platform_has_pinned_runtime() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        true
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        super::install_posix::executable_sha256_for_current_target().is_some()
+    }
+}
+
 /// Whether a verified runtime installation is currently running.
 fn install_active() -> bool {
     #[cfg(target_os = "windows")]
@@ -674,7 +697,7 @@ fn install_active() -> bool {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        false
+        super::install_posix::install_active()
     }
 }
 
@@ -723,6 +746,29 @@ pub fn pocket_tts_stop(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_reported_capability_follows_the_installer() {
+        // The interface offers the installation only when the backend says the
+        // platform has a pinned runtime, so the answer must agree with the
+        // installer that would actually run. A target that the installer
+        // refuses must never be advertised as installable.
+        #[cfg(target_os = "windows")]
+        {
+            assert!(
+                platform_has_pinned_runtime(),
+                "Windows has a pinned runtime"
+            );
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(
+                platform_has_pinned_runtime(),
+                super::super::install_posix::executable_sha256_for_current_target().is_some(),
+                "the capability must follow the installer exactly"
+            );
+        }
+    }
 
     #[test]
     fn clearing_owned_model_cache_preserves_sibling_data_and_is_idempotent() {

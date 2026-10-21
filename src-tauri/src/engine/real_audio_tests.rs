@@ -19,6 +19,9 @@ const FIXTURE_ENV: &str = "MURMURE_STT_FIXTURE_WAV";
 /// Sample rate the Parakeet model expects, as the production pipeline uses.
 const ENGINE_SAMPLE_RATE: usize = 16_000;
 
+/// Recording that holds no speech at all.
+const SILENCE_ENV: &str = "MURMURE_STT_SILENCE_WAV";
+
 /// Read the mono 16-bit PCM samples of a WAV file.
 fn read_wav_samples(path: &Path) -> Result<(Vec<f32>, u32), String> {
     let mut reader = hound::WavReader::open(path)
@@ -65,6 +68,7 @@ fn normalize(text: &str) -> String {
         .join(" ")
 }
 
+#[test]
 #[ignore = "requires the pinned Parakeet model and a real French recording"]
 fn real_french_speech_is_transcribed() {
     let model_dir = std::env::var(MODEL_DIR_ENV)
@@ -92,11 +96,43 @@ fn real_french_speech_is_transcribed() {
         "the resampled recording must not be empty"
     );
 
+    // The two phases are timed so a run carries a number for the cost of the
+    // engine, instead of the report having to say that performance was never
+    // measured. The bound is deliberately loose: it exists to catch a
+    // pathological regression on a shared runner, not to police a normal one.
+    let samples = resampled.len();
+    let loading_started = std::time::Instant::now();
     let mut engine = crate::engine::ParakeetEngine::load_int8(Path::new(&model_dir), tokenizer)
         .expect("the pinned Parakeet model must load");
+    let loading = loading_started.elapsed();
+
+    let transcription_started = std::time::Instant::now();
     let result = engine
         .transcribe_samples(resampled, None)
         .expect("the transcription must succeed");
+    let transcription = transcription_started.elapsed();
+
+    let audio_seconds = samples as f64 / ENGINE_SAMPLE_RATE as f64;
+    let real_time_factor = transcription.as_secs_f64() / audio_seconds;
+    println!(
+        "engine load: {:.2} s, transcription: {:.2} s for {:.2} s of audio, real time factor {:.3}",
+        loading.as_secs_f64(),
+        transcription.as_secs_f64(),
+        audio_seconds,
+        real_time_factor
+    );
+    assert!(
+        loading < std::time::Duration::from_secs(120),
+        "loading the pinned model took {:.1} s, which is far beyond a healthy run",
+        loading.as_secs_f64()
+    );
+    assert!(
+        real_time_factor < 20.0,
+        "transcribing {:.2} s of audio took {:.2} s, a real time factor of {:.1}",
+        audio_seconds,
+        transcription.as_secs_f64(),
+        real_time_factor
+    );
 
     let text = normalize(&result.text);
     assert!(
@@ -112,4 +148,49 @@ fn real_french_speech_is_transcribed() {
         "the engine produced no alphabetic text for the real French recording"
     );
     println!("real French transcription: {text:?}");
+}
+
+/// The counter-test of the round trip: a recording that contains no speech
+/// must not produce words. A model that turns room noise into a sentence
+/// would fill the user's history with text nobody said, which is a privacy
+/// and a trust defect, not a quality defect.
+#[test]
+#[ignore = "requires the pinned Parakeet model and a real silent recording"]
+fn real_silence_is_not_transcribed() {
+    let model_dir = std::env::var(MODEL_DIR_ENV)
+        .expect("MURMURE_STT_MODEL_DIR must point at the int8 Parakeet model");
+    let tokenizer = std::env::var(TOKENIZER_ENV).ok().map(PathBuf::from);
+    let fixture = std::env::var(SILENCE_ENV)
+        .expect("MURMURE_STT_SILENCE_WAV must point at a silent recording");
+
+    let (samples, sample_rate) =
+        read_wav_samples(Path::new(&fixture)).expect("the silent recording must be readable");
+    let peak = samples
+        .iter()
+        .fold(0.0_f32, |accumulator, sample| accumulator.max(sample.abs()));
+    // Guard the guard: a file that holds speech would make this test assert
+    // the opposite of what it claims to assert.
+    assert!(
+        peak < 0.05,
+        "the fixture must actually be silence, but its peak is {peak}"
+    );
+
+    let resampled =
+        crate::audio::helpers::resample(&samples, sample_rate as usize, ENGINE_SAMPLE_RATE);
+    assert!(
+        !resampled.is_empty(),
+        "the resampled recording must not be empty"
+    );
+
+    let mut engine = crate::engine::ParakeetEngine::load_int8(Path::new(&model_dir), tokenizer)
+        .expect("the pinned Parakeet model must load");
+    let result = engine
+        .transcribe_samples(resampled, None)
+        .expect("the transcription must succeed");
+    let text = normalize(&result.text);
+    println!("real silence transcription: {text:?}");
+    assert!(
+        text.is_empty(),
+        "the engine produced {text:?} for a recording that holds no speech"
+    );
 }

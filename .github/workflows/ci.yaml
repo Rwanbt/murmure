@@ -8,6 +8,30 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+            # A contrast claim is only worth what it measures. The tokens of
+            # the dark theme are converted from oklch to sRGB and checked
+            # against the WCAG 2.2 AA thresholds, so a palette change cannot
+            # silently drop the interface below them.
+            - name: Measure the contrast of the interface tokens
+              run: python3 scripts/check-contrast.py --stylesheet src/tailwind.css
+            # Reading a screen by eye does not scale and cannot be re-run.
+            # This is the part of WCAG 2.2 that a compiler does not catch:
+            # keyboard reachability, accessible names and focus order.
+            - name: Audit the screens for keyboard, naming and focus findings
+              run: python3 scripts/audit-accessibility.py --root src/features
+            # A function that carries #[ignore] but not #[test] is never
+            # registered: cargo reports 'running 0 tests' and succeeds, so the
+            # job that was supposed to prove something stays green while
+            # proving nothing. That happened here and was silent for several
+            # runs, so it is checked mechanically.
+            - name: Verify that every ignored test is registered
+              run: python3 scripts/check-ignored-tests.py --root src-tauri/src
+
+            # A log file is written to disk, copied into bug reports and kept
+            # after the audio is deleted, so one debug statement that
+            # interpolates the wrong variable undoes the privacy rule silently.
+            - name: Verify that no log statement carries what the user said
+              run: python3 scripts/check-private-logs.py --root src-tauri/src
 
             - uses: actions/setup-node@v4
               with:
@@ -118,6 +142,107 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
 
+    # The official Kyutai release publishes a build for Linux and macOS, not
+    # only for Windows. These jobs install the one that matches the runner,
+    # verify its published digest before anything is executed, and produce a
+    # real French WAV that the shared structural validator accepts. Without
+    # them the platform matrix would claim parity that was never exercised.
+    pocket-tts-linux-real-audio:
+        name: Pocket TTS real French WAV on Linux
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the WAV validator itself
+              run: python3 scripts/test-pocket-tts-wave-posix.py
+            - name: Check the pinned digests against the published SHA256SUMS
+              run: |
+                  python3 - <<'PY'
+                  import re
+                  import urllib.request
+                  from pathlib import Path
+
+                  published = urllib.request.urlopen(
+                      'https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.0/SHA256SUMS',
+                      timeout=60,
+                  ).read().decode('utf-8')
+                  upstream = {name: digest for digest, name in
+                              (line.split() for line in published.splitlines() if line.strip())}
+                  script = Path('scripts/verify-pocket-tts-posix.sh').read_text(encoding='utf-8')
+                  pinned = {target: digest for target, digest in
+                            re.findall(r"(\S+)\)\s+echo\s+'(\w{64})'", script)}
+                  assert pinned, 'no digest is pinned in the script'
+                  for target, digest in pinned.items():
+                      name = f'pocket-tts-3.3.0-{target}.tar.gz'
+                      assert name in upstream, f'{name} is not published'
+                      assert upstream[name] == digest, (
+                          f'{name}: pinned {digest} but the release publishes {upstream[name]}')
+                      print(f'PASS: {name} matches the published digest')
+                  PY
+            # The weights come from Hugging Face on every run, and the
+            # shared runner address is occasionally rate limited: run
+            # 39604118615 failed that way on a commit that only changed a
+            # markdown file. The cache makes the download happen once and
+            # the retry covers the first run and a cache eviction. Bump the
+            # key when the pinned model revision changes.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
+            - name: Generate and verify a real French WAV
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: |
+                  # A rate limit is a network fault, not a code fault, so
+                  # the step is retried before it fails, like the Clippy gate.
+                  for attempt in 1 2 3; do
+                      if bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts-$attempt"; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt did not produce the French WAV; waiting before retrying."
+                      sleep 60
+                  done
+                  echo "The real French WAV could not be generated after 3 attempts."
+                  exit 1
+
+    pocket-tts-macos-real-audio:
+        name: Pocket TTS real French WAV on macOS
+        runs-on: macos-latest
+        timeout-minutes: 40
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the WAV validator itself
+              run: python3 scripts/test-pocket-tts-wave-posix.py
+            # The weights come from Hugging Face on every run, and the
+            # shared runner address is occasionally rate limited: run
+            # 39604118615 failed that way on a commit that only changed a
+            # markdown file. The cache makes the download happen once and
+            # the retry covers the first run and a cache eviction. Bump the
+            # key when the pinned model revision changes.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
+            - name: Generate and verify a real French WAV
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: |
+                  # A rate limit is a network fault, not a code fault, so
+                  # the step is retried before it fails, like the Clippy gate.
+                  for attempt in 1 2 3; do
+                      if bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts-$attempt"; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt did not produce the French WAV; waiting before retrying."
+                      sleep 60
+                  done
+                  echo "The real French WAV could not be generated after 3 attempts."
+                  exit 1
+
     pocket-tts-model-isolation:
         name: Pocket TTS model cache isolation contract
         runs-on: ubuntu-latest
@@ -138,12 +263,30 @@ jobs:
             contents: read
         steps:
             - uses: actions/checkout@v4
+            # Same treatment as the POSIX jobs: one cache shared by every
+            # job that needs the French weights, and a retry because a
+            # Hugging Face rate limit is a network fault, not a code fault.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
             - name: Generate genuine local French CPU audio and validate WAV
               shell: pwsh
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
               run: |
-                  ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french" -GenerateFrench
+                  $ErrorActionPreference = 'Stop'
+                  for ($attempt = 1; $attempt -le 3; $attempt++) {
+                      try {
+                          ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french-$attempt" -GenerateFrench
+                          exit 0
+                      } catch {
+                          Write-Output "Attempt $attempt failed: $($_.Exception.Message)"
+                          Write-Output "Waiting before retrying."
+                          Start-Sleep -Seconds 60
+                      }
+                  }
+                  throw 'The real French WAV could not be generated after 3 attempts'
 
     pocket-tts-offline-cache-windows:
         name: Pocket TTS cached French WAV without network
@@ -177,6 +320,26 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+            # The French weights come from Hugging Face, and the shared
+            # runner address is occasionally rate limited. One cache entry
+            # is shared by every job that needs them.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
+            # The engine loads the ONNX Runtime at run time, so the job has to
+            # install the official CPU-only distribution and point the engine
+            # at it. Without this the round trip cannot load the model, which
+            # is what happened while the test was not registered at all.
+            - name: Install the CPU-only ONNX Runtime
+              shell: pwsh
+              run: |
+                  $runtime = Join-Path $env:RUNNER_TEMP 'onnxruntime'
+                  ./scripts/install-onnx-runtime.ps1 -Destination $runtime
+                  $library = Join-Path $runtime 'onnxruntime-win-x64-1.23.2\lib'
+                  $dll = Join-Path $library 'onnxruntime.dll'
+                  "ORT_DYLIB_PATH=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  $library | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
               shell: pwsh
@@ -208,15 +371,155 @@ jobs:
                       $env:MURMURE_STT_FIXTURE_WAV = $wav
                       $env:MURMURE_STT_MODEL_DIR = Join-Path $env:GITHUB_WORKSPACE 'resources\parakeet-tdt-0.6b-v3-int8'
                       $env:MURMURE_STT_TOKENIZER = Join-Path $env:GITHUB_WORKSPACE 'resources\tokenizer.json'
-                      cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_french_speech_is_transcribed -- --exact --ignored --nocapture
-                      if ($LASTEXITCODE -ne 0) { throw 'The real French round trip failed' }
+                      # The output is captured so the job can prove that the
+                      # test really ran. A function that carries #[ignore] but
+                      # not #[test] is never registered: cargo then reports
+                      # 'running 0 tests' and exits successfully, so the job used
+                      # to stay green while proving nothing. That is the false
+                      # validation this project forbids, so the number of tests
+                      # that actually ran is asserted here.
+                      $output = cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_french_speech_is_transcribed -- --exact --ignored --nocapture 2>&1 | Out-String
+                      $exit = $LASTEXITCODE
+                      Write-Output $output
+                      if ($exit -ne 0) {
+                          # The Windows loader names the library and the entry
+                          # point it could not resolve, which cargo does not
+                          # report. The diagnosis is needed to fix the build.
+                          ./scripts/diagnose-windows-test-launch.ps1
+                          throw 'The real French round trip failed'
+                      }
+                      if ($output -notmatch '1 passed') {
+                          throw 'The real French round trip ran no test, so it proved nothing'
+                      }
+
+                      # The counter-test. A model that turns room noise into a
+                      # sentence fills the user's history with words nobody said.
+                      # A runner has no microphone, so the fixture is generated
+                      # with a fixed seed; a local run used a real capture.
+                      $silence = Join-Path $destination 'silence.wav'
+                      python ./scripts/make-silence-wav.py $silence
+                      $env:MURMURE_STT_SILENCE_WAV = $silence
+                      $silenceOutput = cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_silence_is_not_transcribed -- --exact --ignored --nocapture 2>&1 | Out-String
+                      $silenceExit = $LASTEXITCODE
+                      Write-Output $silenceOutput
+                      if ($silenceExit -ne 0) {
+                          throw 'The silence counter-test failed: the engine produced words for a recording that holds no speech'
+                      }
+                      if ($silenceOutput -notmatch '1 passed') {
+                          throw 'The silence counter-test ran no test, so it proved nothing'
+                      }
+
+                      # Two installer tests are ignored everywhere because they
+                      # need the official archive. This job already downloaded it
+                      # and checked its digest, so they run here against the real
+                      # bytes instead of staying ignored forever.
+                      $archive = Join-Path $destination 'pocket-tts.zip'
+                      if (-not (Test-Path -LiteralPath $archive)) {
+                          throw 'The verified Pocket TTS archive is missing'
+                      }
+                      $env:MURMURE_TTS_OFFICIAL_ARCHIVE = $archive
+                      # One thread: the tests share a process wide install guard,
+                      # and running them in parallel would make one of them fail
+                      # on a lock rather than on a real defect.
+                      $installerOutput = cargo test --manifest-path src-tauri/Cargo.toml --lib tts::install_windows::tests -- --ignored --nocapture --test-threads=1 2>&1 | Out-String
+                      $installerExit = $LASTEXITCODE
+                      Write-Output $installerOutput
+                      if ($installerExit -ne 0) {
+                          throw 'The installer contract failed against the official archive'
+                      }
+                      if ($installerOutput -notmatch '2 passed') {
+                          throw 'The installer contract ran fewer than two tests, so it proved less than it claims'
+                      }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+                      Remove-Item -LiteralPath $silence -Force -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_STT_SILENCE_WAV -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_TTS_OFFICIAL_ARCHIVE -ErrorAction SilentlyContinue
                   }
 
-    # The dependency audit runs where the lock file is fixed, so the advisory
-    # list it reports matches the versions that are actually shipped.
+    # The frontend tree was never audited, so a vulnerable transitive package
+    # could ship unnoticed. The lock file is the only honest source: it holds
+    # the versions the build installs, not the ranges the project asks for.
+    # osv.dev is the open database of the Open Source Security Foundation, so
+    # the check needs no account and anyone can reproduce it.
+    #
+    # The two advisories that are accepted are listed below with the reason
+    # neither can be closed today, and any advisory that is not listed fails
+    # the job.
+    #
+    #   GHSA-vfj7-8cjw-p6xm  braces: no patched release exists. The stack
+    #       exhaustion needs an attacker-controlled glob pattern, and every
+    #       pattern used here comes from the build configuration of this
+    #       repository, never from user input. Development tooling only.
+    #   GHSA-238p-pmpm-9mq7  katex: arrives through the component library
+    #       and its mermaid and rehype-katex consumers, which pin
+    #       `katex@^0.16` and would have to widen their range first. The
+    #       advisory needs TeX rendered with the `trust` option, and the
+    #       application renders no user-supplied TeX.
+    dependency-audit-javascript:
+        name: JavaScript dependency audit
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: '3.x'
+            - name: Install the YAML reader the lock file needs
+              run: python3 -m pip install --quiet pyyaml
+            - name: Check the JavaScript dependencies against the OSV database
+              run: |
+                  python3 scripts/audit-js-dependencies.py \
+                      --lock pnpm-lock.yaml \
+                      --allow GHSA-vfj7-8cjw-p6xm,GHSA-238p-pmpm-9mq7
+
+    # The RustSec advisory database is checked against the exact lock file, so
+    # a vulnerable transitive dependency cannot reach a release unnoticed.
+    #
+    # The advisories listed below are the ones whose fix needs a major
+    # upgrade of a parent dependency that this fork does not own. Each one is
+    # listed with the reason it is not reachable here, and each one is
+    # tracked. Any advisory that is not listed still fails the job, so a new
+    # vulnerability can never slip through.
+    #
+    #   RUSTSEC-2026-0194, RUSTSEC-2026-0195  quick-xml: the XML parser
+    #       of a dependency that needs 0.41; the application parses no
+    #       untrusted XML.
+    #   RUSTSEC-2026-0235  rkyv: needs 0.8, the parent allows 0.7 only.
+    #   RUSTSEC-2026-0367, RUSTSEC-2026-0368, RUSTSEC-2026-0369  zip: the
+    #       Tauri updater plugin still requires zip 4; the application never
+    #       calls ZipArchive::extract, it copies the bytes of one
+    #       name-matched entry to a fixed destination.
+    #   RUSTSEC-2024-0429  glib: Linux only, and the affected
+    #       VariantStrIter is not used.
+    #   RUSTSEC-2026-0097  rand: a build time dependency, and the unsoundness
+    #       needs a custom logger that re-enters the random generator.
+    dependency-audit:
+        name: Dependency audit
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            # The action publishes its result as a check run.
+            checks: write
+        steps:
+            - uses: actions/checkout@v4
+            - name: Check the Rust dependencies against the RustSec advisories
+              uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  working-directory: src-tauri
+                  ignore: >-
+                    RUSTSEC-2026-0194,
+                    RUSTSEC-2026-0195,
+                    RUSTSEC-2026-0235,
+                    RUSTSEC-2026-0367,
+                    RUSTSEC-2026-0368,
+                    RUSTSEC-2026-0369,
+                    RUSTSEC-2024-0429,
+                    RUSTSEC-2026-0097
+
     # A green pipeline must never hide a skipped real-audio validation. The
     # two jobs above are the only evidence that Pocket TTS really synthesizes
     # French speech on the target platform, so a skipped or cancelled result

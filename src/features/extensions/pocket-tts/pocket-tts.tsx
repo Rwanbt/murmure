@@ -18,6 +18,11 @@ interface RuntimeStatus {
     installed: boolean;
     verified: boolean;
     cpuCompatible: boolean;
+    // Whether the official release publishes a runtime for this platform.
+    // The backend decides, because it holds the pinned digests, so the
+    // interface never offers an installation that could never succeed and
+    // never hides one that can.
+    platformSupported: boolean;
 }
 
 interface InstallProgress {
@@ -25,7 +30,7 @@ interface InstallProgress {
     totalBytes: number | null;
 }
 
-type ModelState = 'not_installed' | 'ready' | 'in_use';
+type ModelState = 'not_installed' | 'downloading' | 'corrupted' | 'ready' | 'in_use';
 
 interface ModelStatus {
     id: string;
@@ -262,14 +267,19 @@ export const PocketTts = () => {
                 )}
                 {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.installed && (
                     <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-missing">
-                        {t('Pocket TTS is not installed in Murmure. Install the official verified Windows runtime explicitly.')} {' '}
+                        {t('Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.')} {' '}
                         <a href="https://github.com/kyutai-labs/pocket-tts/releases/tag/v4.0.0" target="_blank" rel="noopener noreferrer" className="underline">
                             {t('Official Pocket TTS release')}
                         </a>
                     </p>
                 )}
 
-                {navigator.userAgent.includes('Windows') && runtimeStatus?.cpuCompatible && !runtimeStatus.verified && (
+                {runtimeStatus && runtimeStatus.cpuCompatible && !runtimeStatus.platformSupported && (
+                    <p role="status" className="text-sm text-amber-500" data-testid="pocket-tts-unsupported">
+                        {t('The official Pocket TTS release has no build for this system, so speech is unavailable here.')}
+                    </p>
+                )}
+                {runtimeStatus?.platformSupported && runtimeStatus.cpuCompatible && !runtimeStatus.verified && (
                     <button
                         type="button"
                         disabled={installing || busy}
@@ -277,14 +287,23 @@ export const PocketTts = () => {
                         onClick={() => void installOfficialRuntime()}
                         data-testid="pocket-tts-install"
                     >
-                        {installing ? t('Installing verified Pocket TTSâ€¦') : t('Install official Pocket TTS for Windows')}
+                        {installing ? t('Installing verified Pocket TTS…') : t('Install the official Pocket TTS runtime')}
                     </button>
                 )}
                 {installing && (
                     <div role="status" aria-live="polite" data-testid="pocket-tts-install-progress" className="space-y-2">
+                        {installProgress?.totalBytes ? (
+                            <progress
+                                aria-label={t('Pocket TTS download progress')}
+                                className="h-2 w-full"
+                                max={installProgress.totalBytes}
+                                value={installProgress.receivedBytes}
+                                data-testid="pocket-tts-install-progress-bar"
+                            />
+                        ) : null}
                         <p className="text-sm">
                             {cancelRequested
-                                ? t('Cancelling Pocket TTS installationâ€¦')
+                                ? t('Cancelling Pocket TTS installation…')
                                 : installProgress?.totalBytes
                                     ? `${t('Downloading Pocket TTS')}: ${Math.min(100, Math.round(100 * installProgress.receivedBytes / installProgress.totalBytes))}%`
                                     : `${t('Downloading Pocket TTS')}: ${installProgress?.receivedBytes ?? 0} ${t('bytes received')}`}
@@ -306,7 +325,7 @@ export const PocketTts = () => {
 
                 <div role="status" aria-live="polite" data-testid="pocket-tts-status">
                     {state === 'idle' && t('Ready')}
-                    {state === 'generating' && t('Generating audio on CPUâ€¦')}
+                    {state === 'generating' && t('Generating audio on CPU…')}
                     {state === 'playing' && t('Playing French preview')}
                     {state === 'paused' && t('Paused')}
                     {state === 'stopped' && t('Stopped')}
@@ -334,7 +353,7 @@ export const PocketTts = () => {
                     </label>
                     <p className="text-xs text-muted-foreground">
                         <a className="underline" href="https://huggingface.co/kyutai/pocket-tts-without-voice-cloning" target="_blank" rel="noopener noreferrer">
-                            {t('Kyutai French model â€” CC BY 4.0')}
+                            {t('Kyutai French model — CC BY 4.0')}
                         </a>
                         {' Â· '}
                         {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
@@ -347,7 +366,7 @@ export const PocketTts = () => {
                     className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
                     data-testid="pocket-tts-clear-cache"
                 >
-                    {clearingCache ? t('Deleting downloaded Pocket TTS modelsâ€¦') : t('Delete downloaded Pocket TTS models')}
+                    {clearingCache ? t('Deleting downloaded Pocket TTS models…') : t('Delete downloaded Pocket TTS models')}
                 </button>
                 <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
                     {t('French speech model')}
@@ -360,8 +379,8 @@ export const PocketTts = () => {
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     data-testid="pocket-tts-model"
                 >
-                    <option value="french">{t('French â€” efficient CPU model')}</option>
-                    <option value="french_24l">{t('French â€” 24 layers (larger experimental model)')}</option>
+                    <option value="french">{t('French — efficient CPU model')}</option>
+                    <option value="french_24l">{t('French — 24 layers (larger experimental model)')}</option>
                 </select>
                 <label htmlFor="pocket-tts-volume" className="block text-sm font-medium">
                     {t('Playback volume')}: {volume}%
@@ -394,6 +413,10 @@ export const PocketTts = () => {
                                     {status.state === 'ready' && t('Ready, usable offline')}
                                     {status.state === 'in_use' && t('In use')}
                                     {status.state === 'not_installed' && t('Not downloaded yet')}
+                                    {status.state === 'downloading' &&
+                                        t('Download unfinished, start it again')}
+                                    {status.state === 'corrupted' &&
+                                        t('Incomplete or unreadable, download it again')}
                                     {size !== null && ` Â· ${size}`}
                                     {status.revision !== null && ` Â· ${status.revision.slice(0, 12)}`}
                                     {' Â· '}
@@ -414,7 +437,7 @@ export const PocketTts = () => {
                     onChange={(event) => setSpeechText(event.target.value)}
                     className="w-full rounded-md border border-border bg-background p-3 text-sm"
                     data-testid="pocket-tts-text"
-                    placeholder={t('Type a French sentence to read locallyâ€¦')}
+                    placeholder={t('Type a French sentence to read locally…')}
                 />
                 <p className="text-xs text-muted-foreground">
                     {t('Only text you explicitly submit is synthesized. Code blocks and likely credential lines are omitted.')}

@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod chunking;
 pub mod clean_recording;
+pub mod focus;
 pub mod helpers;
 pub mod microphone;
 pub mod output_volume;

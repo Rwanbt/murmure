@@ -201,7 +201,12 @@ Get-ChildItem -LiteralPath $binaryDirectory -Filter '*.dll' -File -ErrorAction S
     }
 
 Write-Host ''
-$output = & $TestBinary 2>&1
+# The binary is launched with `--list`, which makes the harness print the
+# names of its tests without running any of them. The point of this script is
+# to observe the loader, which happens before the tests start, so running the
+# whole suite here would execute unrelated tests with no filter and report
+# failures that have nothing to do with the launch.
+$output = & $TestBinary --list 2>&1
 $exitCode = $LASTEXITCODE
 Write-Host "Launch exit code: $exitCode"
 if ($output) {

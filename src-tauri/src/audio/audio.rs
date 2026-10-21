@@ -27,6 +27,11 @@ pub fn record_audio(app: &AppHandle, mode: RecordingMode, trigger: RecordingTrig
             return false;
         }
     };
+    // Remember where the user was typing before the overlay appears: the
+    // paste sends Ctrl+V to whatever has the focus at the end, and showing
+    // then hiding the overlay does not give the focus back to the same
+    // control in every application.
+    crate::audio::focus::remember_foreground();
     state.set_recording_mode(mode);
     state.set_recording_trigger(trigger);
 
@@ -366,7 +371,12 @@ pub fn write_transcription(app: &AppHandle, transcription: &str) -> Result<()> {
         error!("Failed to cleanup recordings: {}", e);
     }
 
-    debug!("Transcription written to clipboard {}", transcription);
+    // The length is useful when a paste loses its content; the words
+    // themselves are the user's dictation and never belong in a log file.
+    debug!(
+        "Transcription written to clipboard ({} characters)",
+        transcription.chars().count()
+    );
     Ok(())
 }
 
@@ -395,7 +405,10 @@ pub fn write_last_transcription(app: &AppHandle, transcription: &str) -> Result<
         error!("Failed to paste last transcription: {}", e);
     }
 
-    debug!("Last transcription written to clipboard {}", transcription);
+    debug!(
+        "Last transcription written to clipboard ({} characters)",
+        transcription.chars().count()
+    );
     Ok(())
 }
 

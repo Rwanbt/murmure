@@ -714,6 +714,8 @@
     "Ready, usable offline": "Prêt, utilisable hors ligne",
     "In use": "En cours d'utilisation",
     "Not downloaded yet": "Pas encore téléchargé",
+    "Download unfinished, start it again": "Téléchargement inachevé, relancez-le",
+    "Incomplete or unreadable, download it again": "Incomplet ou illisible, retéléchargez-le",
     "Changes apply to the next playback. Larger models may require more RAM and a separate download.": "Ces réglages s’appliquent à la prochaine lecture. Les modèles plus volumineux peuvent nécessiter davantage de mémoire et un téléchargement distinct.",
     "Unable to load TTS settings.": "Impossible de charger les réglages de synthèse vocale.",
     "Unable to detect Pocket TTS runtime.": "Impossible de détecter le moteur Pocket TTS.",
@@ -741,5 +743,14 @@
     "bytes received": "octets reçus",
     "Cancel installation": "Annuler l’installation",
     "Pause or resume speech": "Mettre la voix en pause ou reprendre",
-    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre."
+    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre.",
+    "Install the official Pocket TTS runtime": "Installer le moteur Pocket TTS officiel",
+    "Pocket TTS download progress": "Progression du téléchargement de Pocket TTS",
+    "The official Pocket TTS release has no build for this system, so speech is unavailable here.": "La version officielle de Pocket TTS ne fournit pas de binaire pour ce système, la lecture est donc indisponible ici.",
+    "Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.": "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié.",
+    "Delete Pocket TTS models downloaded by Murmure?": "Supprimer les modèles Pocket TTS téléchargés par Murmure ?",
+    "Delete downloaded Pocket TTS models": "Supprimer les modèles Pocket TTS téléchargés",
+    "Deleting downloaded Pocket TTS models…": "Suppression des modèles Pocket TTS téléchargés…",
+    "Murmure Pocket TTS model cache cleared.": "Cache des modèles Pocket TTS de Murmure vidé.",
+    "Holding AltGr and pressing the same letter does it with one hand.": "Maintenir AltGr et appuyer sur la même lettre fait la même chose d'une seule main."
 }

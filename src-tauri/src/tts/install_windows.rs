@@ -115,7 +115,9 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
         .filter(|&i| {
             archive.by_index(i).is_ok_and(|entry| {
                 entry.is_file()
-                    && entry.name().replace('\\', "/").rsplit('/').next() == Some("pocket-tts.exe")
+                    && entry.name().is_ok_and(|name| {
+                        name.replace('\\', "/").rsplit('/').next() == Some("pocket-tts.exe")
+                    })
             })
         })
         .collect();

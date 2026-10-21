@@ -45,14 +45,28 @@ command. **PARTIAL** — a real part is proven, a named part is not.
 | Audio device (speaker / microphone) | MANUAL | MANUAL | MANUAL |
 | Packaged application | **PROVEN** (NSIS bundle, installed and launched) | OPEN | OPEN |
 
-**The verified Pocket TTS runtime exists only for Windows.** The Tauri
-configuration pins one official Kyutai release,
-`pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip` (archive SHA-256
-`b3b2faa7…`, extracted executable SHA-256 `9b52ad9d…`). No official Linux
-or macOS build is pinned, so the Rust side refuses to run on those
-platforms instead of accepting an unverified binary
-(`src-tauri/src/tts/preview.rs`, `binary_path`). **Linux and macOS
-functional parity is therefore not claimed.**
+**The official Kyutai release publishes a verified Pocket TTS runtime for
+five targets, not only for Windows.** Release `v4.0.0` carries binaries
+whose digests are published in its `SHA256SUMS`:
+
+| Target | Pinned archive SHA-256 |
+| --- | --- |
+| `x86_64-pc-windows-msvc` | `b3b2faa7…` |
+| `x86_64-unknown-linux-gnu` | `1336a77e60ce11650a5a3dc354770155a345bfa797f7a05d10bc5b1bcfe0d7e3` |
+| `aarch64-unknown-linux-gnu` | `644a9478d7cbd7d432f5a4898007aa7d178a897a65aef7ebc64557e0b1a1739a` |
+| `x86_64-apple-darwin` | `3a908c524d1ca976eb5f699c523fbdd47a5fa029ccc3bd9f6197b8f8d91f01c1` |
+| `aarch64-apple-darwin` | `e209feca849d53df18eba89f5bd4c253c1be62a6c54794db5654635c95e02990` |
+
+A previous revision of this report claimed that no official Linux or macOS
+build existed and that functional parity was therefore impossible. That
+claim was wrong: it was inferred from the single archive that this fork had
+pinned, not from the release itself. The Windows runtime is the only one
+that is wired, verified and exercised today; the other four are published
+and pinned above but **not yet qualified**. Until they are, the Rust side
+still refuses to run TTS on those platforms rather than accepting an
+unverified binary (`src-tauri/src/tts/preview.rs`, `binary_path`), so
+Linux and macOS TTS parity stays **not claimed** — for lack of
+qualification, not for lack of an official build.
 
 ### 2.2 Features
 
@@ -87,7 +101,7 @@ functional parity is therefore not claimed.**
 | Cache deletion never escapes its directory | PROVEN (symlink and junction refused) |
 | No audio, transcription or spoken text logged | PROVEN by inspection of `src-tauri/src/tts` and `src-tauri/src/smartmic` |
 | `process:default` capability | Verified safe: `tauri-plugin-process` 2.3.1 grants only `allow-exit` and `allow-restart`, not arbitrary execution |
-| Dependency audit (`cargo audit`, `osv-scanner`) | **PROVEN** (RustSec) | PR #54: the advisory database is checked against the exact lock file on every pull request, the reachable advisories are fixed, and the eight that need a major upgrade of a parent dependency are listed with their reason. `osv-scanner` for the JavaScript tree is still OPEN. |
+| Dependency audit | **PROVEN** (both trees) | Rust: `cargo audit` checks the RustSec database against the exact lock file, the reachable advisories are fixed and the eight that need a major upgrade of a parent are listed with their reason. JavaScript: `scripts/audit-js-dependencies.py` queries the open `osv.dev` database with the 1029 packages the lock file installs. It found five advisories, three of them closed by updating `vite` to 7.3.7; the two that remain are accepted with a written justification and fail the job if any other appears. |
 
 ### 2.4 Speech-to-Text — map and scenario coverage
 
@@ -116,25 +130,25 @@ The engine was already present in Murmure. It was mapped, not rebuilt.
 
 | Scenario | Status | Evidence |
 | --- | --- | --- |
-| First recording | **PROVEN** | the round trip transcribes a real recording |
-| Repeated recording | **PROVEN** | a finished session can be claimed again (unit test) |
-| Manual stop | **PROVEN** | the session claim and the stop path |
-| Short recording | **PROVEN** | chunking unit tests |
-| Long recording within the limits | **PROVEN** | chunking unit tests |
-| Silence | **PROVEN** | 10 VAD unit tests |
-| No audio input | **PROVEN** | the recorder reports `InitFailed`, the temporary file is removed and the user is notified |
-| Microphone unavailable | **PROVEN** | same path as no audio input |
+| First recording | **PARTIAL** | the capture device and the transcription are proven on real hardware (§6.1.1); the shortcut-driven flow that starts and stops a recording through the interface is not |
+| Repeated recording | **PARTIAL** | `a_finished_session_can_be_claimed_again` proves a finished session can be claimed again; no real recording was repeated |
+| Manual stop | **PARTIAL** | the superseded branch releases the claim, and the claim has unit tests; no real two-second stop was performed |
+| Short recording | **PARTIAL** | `audio::chunking` carries 19 tests over the windowing; no real short recording was made |
+| Long recording within the limits | **PARTIAL** | the same 19 chunking tests; no real long recording was made |
+| Silence | **PROVEN at the engine level** | `real_silence_is_not_transcribed` returns an empty text for a real five second capture of this machine's microphone (peak 2.2 % of full scale) and for the deterministic fixture. The application adds the voice activity gate on top, covered by 10 unit tests |
+| No audio input | **NOT TESTED** | the `InitFailed` branch of `audio.rs` calls `notify_recording_error`, and `audio.rs` carries no test. It has never been exercised on a machine without an input device |
+| Microphone unavailable | **NOT TESTED** | same branch, same reason |
 | Permission refused | **MANUAL** | needs the operating system permission prompt |
 | Permission revoked | **MANUAL** | same |
-| Device change | **MANUAL** | needs two real devices |
-| System interruption | **PARTIAL** | the session claim survives a competing trigger; a full interruption needs a real device |
-| French transcription | **PROVEN** | the round trip asserts real French words |
-| Offline transcription | **PROVEN** | the model and the tokenizer are local; no network call in the path |
-| Model absent | **PROVEN** | `get_model_path` reports the model as missing |
-| Model corrupted | **PARTIAL** | the ONNX session fails to load; not exercised by a test |
-| Restart after a failure | **PROVEN** | the session claim is released on every error path |
-| Several rapid triggers | **PROVEN** | the atomic session claim (PR #51) |
-| Concurrent shortcuts | **PROVEN** | the atomic claim, exactly one of two concurrent claims wins |
+| Device change | **MANUAL** | needs two real devices and a change while the application runs |
+| System interruption | **PARTIAL** | the session claim survives a competing trigger; a full sleep and wake needs a real device |
+| French transcription | **PROVEN** | job `119192646552` and a local run print `"bonjour ceci est un essai de synthese vocale locale"` for a real recording. The assertion itself requires alphabetic output, not specific words |
+| Offline transcription | **NOT TESTED** | the model and the tokenizer are local and the code path makes no network call, but no run was made with the network disabled |
+| Model absent | **NOT TESTED** | the path exists; no test asserts what it reports |
+| Model corrupted | **NOT TESTED** | the ONNX session would fail to load; no test exercises it |
+| Restart after a failure | **PARTIAL** | the claim is released on the error paths; no restart was performed after a real failure |
+| Several rapid triggers | **PROVEN** | `a_second_trigger_cannot_claim_a_running_session` and `exactly_one_of_two_concurrent_claims_wins` |
+| Concurrent shortcuts | **PROVEN** | the same two tests: exactly one of two concurrent claims wins |
 
 ---
 
@@ -147,21 +161,23 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 1 | Continuous real-audio CI gate | P0 | DONE | `test/pocket-tts-offline-cache-windows` | #31 | `e26761c` | CI on PR #31 | real French WAV 19 s, cached WAV 25 s, qualification gate pass | historical runs of PRs #33–#39 still show the old skip | GitHub does not re-run CI when only a base branch moves | Merge bottom-up; the gate then covers every later pull request |
 | 2 | Model cache isolation and credential hygiene | P0 | DONE | `fix/pocket-tts-script-powershell-contract` | #40 | `e924b2e` | 11 deterministic checks | green in CI | — | — | — |
 | 3 | Shared structural WAV validator | P0 | DONE | `test/pocket-tts-wav-validator-contract` | #41 | `4506c0c` | 11 deterministic checks | green in CI | — | — | — |
-| 4 | Packaged Windows application | P0 | VALIDATING | `ci/packaged-windows-application` | #42 | `e33d6c7` | CI job `Packaged Windows application` | green on PR #42 | interactive journey | needs a desktop session | Manual protocol in §6 |
+| 4 | Packaged Windows application | P0 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `adbef67` | the CI job, then a full install cycle on a real desktop | Job `119192646518`: every step green. Locally: NSIS bundle 590 MB, silent install exit 0 in 61 s (16 files, 666.4 MB), registry entry `murmure 2.0.3`, launch with window `Murmure`, 39 threads, 50 MB, no orphan, silent uninstall exit 0 removing the directory and the key, user settings preserved (§6.0) | the interactive journey (steps 2 to 10 and 12 to 13) needs a human at the desktop | — | run §6 |
 | 5 | rustfmt compliance for the T0 gate | P1 | DONE | `chore/rustfmt-pocket-tts-chain` | #43 | `e7eaa0b` | `cargo fmt --check` | 0 differences | — | — | — |
 | 6 | Cache never deletes the runtime | P0 | DONE | `fix/tts-model-cache-preserves-runtime` | #44 | `4553cf8` | 6 deterministic checks | green in CI | — | — | — |
 | 7 | Generation supervision failure modes | P0 | DONE | `test/pocket-tts-generation-supervision` | #45 | `ee3abab` | 5 deterministic checks | green in CI | — | — | — |
-| 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
-| 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
-| 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
-| 11 | STT qualification | P0 | VALIDATING | `test/stt-real-french-roundtrip` | #52 | `259fbb5` | a real French recording transcribed by the pinned model | running | the device and permission scenarios | needs a real microphone | execute the manual protocol |
-| 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
-| 13 | Dependency audit | P1 | VALIDATING | `fix/dependency-advisories` | #54 | `2d3bf46` | the RustSec advisory database | running | eight advisories need a major upgrade of a parent dependency | — | tracked and listed in the audit gate |
+| 8 | ONNX Runtime download reliability | P1 | DONE | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | the installer, run by three jobs | `install-onnx-runtime.ps1` verifies the archive digest (`0b38df9a…`) and the library digest the engine checks (`dec964ab…`) before anything is used; a mismatch aborts. Exercised by the round-trip, Rodio and packaged jobs in runs `39591303205` and `39593352219` | - | - | - |
+| 9 | Model lifecycle states | P0 | DONE | `fix/dependency-advisories` | #54 | `e913b2b` | 4 deterministic tests plus the 410-test suite | `an_unfinished_blob_is_reported_as_downloading`, `an_empty_weight_file_is_never_reported_as_ready`, `an_empty_weights_directory_is_never_reported_as_ready`, `weights_in_a_subdirectory_are_reported_as_ready`; the dangling-link test is `#[cfg(unix)]` and runs on the Linux job | The state followed the presence of the directory, so a partial download was shown as ready and offline usable. It now reads the `<digest>.incomplete` blob and the readability of every weight | the five states the mission lists as `verifying`, `failed` and `removing` have no signal today: the weights are fetched by the official CLI, and nothing observes that moment | watch the CLI output if those states are required |
+| 10 | Global pause/resume shortcut | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | inherited by the chain | `3ebd585` | `registry.rs` tests plus the 406-test suite | `registers_pause_tts_without_colliding_with_stt_or_stop`, `registers_default_tts_stop_shortcut_without_affecting_stt`, `registers_selection_read_shortcut_without_mutating_stt`; the global hotkey is registered in `registry.rs` and dispatched in `shortcuts.rs` | The journal said TODO; the shortcut was already registered, wired to `TogglePauseTts` and covered by tests. The interface reads it from `SHORTCUT_CONFIGS.ttsPause` | pressing the real hotkey during playback needs a desktop | the manual row in 6.1 |
+| 11 | STT qualification | P0 | DONE | `fix/dependency-advisories` | #54 | `5f5b474` | the whole unit suite plus a real French recording through the pinned model | job `119192646552` at `5f5b474`: `1 passed; 0 failed; 404 filtered out`, transcription `"bonjour ceci est un essai de synthese vocale locale"`, engine load 2.27 s, 0.83 s for 3.64 s of audio (real time factor 0.228) | Two stacked defects held the claim: the test was never registered (`running 0 tests` in run `39587708682`), then the job had never installed the ONNX Runtime the engine loads (`The ONNX Runtime is not installed` in run `39589886791`). Both fixed in `0264519` and `5f5b474` | the device and permission scenarios stay manual | the manual microphone and device scenarios (6.1) |
+| 12 | WCAG 2.2 AA audit | P1 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `e913b2b` | contrast measured on the tokens, static audit of 133 screens | `check-contrast.py`: 9 pairs above their thresholds; `audit-accessibility.py`: 133 screens, 0 finding | screen-reader reading needs a manual pass | the announcement order cannot be measured statically | run §6.2 |
+| 13 | Dependency audit | P1 | DONE | `fix/dependency-advisories` | #54 | `b02b79e` | RustSec and `osv.dev` | `Dependency audit` and `JavaScript dependency audit` green at `5f5b474` and `9ce4800`; the eight Rust and two JavaScript advisories are accepted with a written reason in the job, and any unlisted advisory fails the build | the accepted advisories need a major upgrade of a parent dependency | tracked and listed in the audit gate | revisit when the parents move |
 | 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `f5cdbc8` | — | this document | — | — | — |
-| 15 | Rapid triggers keep the recording | P0 | VALIDATING | `fix/stt-second-trigger-keeps-recording` | #51 | `ad22b02` | 4 unit tests | running | — | — | — |
-| 16 | French Pocket TTS errors | P1 | VALIDATING | `fix/tts-localized-errors` | #53 | `8e2638b` | the type check and the lint | running | — | — | — |
-| 15 | The engine does not depend on the graphics stack | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | - | the runtime is loaded from a verified path | running | the packaged application has to ship the runtime | - | - |
-| 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `07e9b41` | the real generated recording | running | — | — | — |
+| 15 | Rapid triggers keep the recording | P0 | DONE | `fix/stt-second-trigger-keeps-recording` | #51 | `d6c5548` | 4 unit tests | `a_second_trigger_cannot_claim_a_running_session`, `a_finished_session_can_be_claimed_again`, `exactly_one_of_two_concurrent_claims_wins`, `invalidating_a_session_advances_the_generation`, all green in the 410-test suite | pressing the real shortcut four times needs a desktop | §6.1 row 14 | - |
+| 16 | French Pocket TTS errors | P1 | DONE | `fix/tts-localized-errors` | #53 | `c2013c8` | the type check, the lint and the locale file | `npx tsc --noEmit` and `eslint --max-warnings 0` both exit 0 locally; `fr.json` holds 749 keys, including the two added for the new model states | - | - | - |
+| 17 | Real French WAV through the production Rodio decoder | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `ddaa83e` | the real generated recording, decoded by Rodio | job `Pocket TTS real French WAV decoded by Rodio` green at `5f5b474` and `9ce4800` | - | the runner has no audio device, so the transport is checked on an in-memory queue | - |
+| 18 | The engine does not depend on the graphics stack | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `c99f3e4` | the whole unit suite, 400 passed | `cargo test --lib` | the packaged application has to ship the runtime | - | validate the packaged installer |
+| 19 | No binary depends on the common controls task dialog | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `cdb5930` | the whole unit suite, 400 passed and 0 failed | `cargo test --lib` | - | - | - |
+| 20 | Pocket TTS on Linux and macOS | P2 | DONE (x86_64 Linux, aarch64 macOS) | `fix/dependency-advisories` | #54 | `3ec8e7d` | 11 validator checks, 4 archive digests and 4 executable digests pinned, 2 real French syntheses | job `119154672419` (Linux): `24000 Hz, 1 channel(s), 16 bits, 3.48 s, peak 0.405`; job `119154672275` (macOS): same recording, executable `6a7a6cb0…` | aarch64 Linux and x86_64 macOS are pinned but no runner exercises them | - | add those two runners or record them as unqualified |
 
 ### 3.1 Defects found and fixed
 
@@ -178,26 +194,63 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | The ONNX Runtime prebuilt download is not covered by the rust cache, so a dropped connection failed the mandatory Clippy gate | Medium | job `118970407231`, `Peer disconnected` | PR #46 |
 | A duplicated `key:` in a workflow makes GitHub refuse to load it, and PyYAML accepts duplicate keys silently | Medium | three runs failed with no job at all | PR #46, `scripts/validate-workflows.py` |
 | A rapid second trigger replaced the chunk pipeline of the running recording, so the audio was discarded and the user got an empty result | High | the wake word path called `record_audio` without the guard the shortcut paths have | PR #51, an atomic session claim |
-| The real French WAV proof required 120 silent samples inside a 20 ms window, which Rodio's mixer blocks can exceed | Medium | the proof failed on a loaded runner although the transport behaved correctly | PR #50, a realistic silence bound |
-| The speech recognition engine pulled the DirectX 12 libraries into the import table of every binary, so a Windows installation without the full graphics stack refused to start the program | High | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) when the test binary was launched: `DirectML.dll` needs `D3D12SerializeVersionedRootSignature` from `d3d12.dll`, and the server image does not export it | PR #50, the official CPU-only ONNX Runtime is loaded at runtime and the DirectX dependency is gone |
-| The test binaries carried no application manifest, so the loader resolved the version 5 of the common controls, which does not export the task dialog that the window library of the framework imports, and the process refused to start | Critical | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) reproduced locally; the import table names `comctl32.dll!TaskDialogIndirect`, and only the side-by-side version 6 of that library exports it | PR #50, the build script embeds the manifest in the test binaries, exactly like the installer does for the application |
+| The real French WAV proof required 120 silent samples inside a 20 ms window, which Rodio's mixer blocks can exceed | Medium | the proof failed on a loaded runner although the transport behaved correctly | PR #50, the proof now inspects the decoded samples directly and the transport stays proven on the in-memory queue |
+| The interface offered the runtime installation only when the browser user agent contained `Windows`, so Linux and macOS users could never install a runtime that the official release does publish | High | the install button was gated on `navigator.userAgent.includes('Windows')`, while the backend verifies a pinned digest for four POSIX targets | PR #54: the backend now reports `platformSupported` from the installer itself, the button follows that capability, and a platform without a pinned build says so instead of showing nothing |
+| The installation download reported its progress only as a sentence, so assistive technology received no value | Medium | the progress region was a status paragraph with a percentage in its text | PR #54: a real `progress` element carries `max` and `value` and is labelled |
+| The interface told every user that the runtime was a Windows one | Medium | the missing-runtime message and the install button named Windows | PR #54: both name the official runtime, and the French catalogue carries the new strings |
+| A test that proved the speech recognition round trip was not a test at all, so its job stayed green while running zero cases | **Critical** | the function carried `#[ignore]` without `#[test]`; `cargo test` reported `running 0 tests; 404 filtered out` and exited successfully (run `39587708682`) | PR #54 `0264519`: the attribute is restored, the job fails unless the output contains `1 passed`, and `scripts/check-ignored-tests.py` refuses any ignored function that is not registered, in `Check Guidelines` |
+| The test binaries refused to start, so no unit test could run on Windows | Critical | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) reproduced locally. The window menu library of the framework imports `comctl32.dll!TaskDialogIndirect`, which only the side-by-side version 6 of that library exports; a test binary is produced by the test harness of the compiler and carries no manifest, so the loader resolved the version 5 and refused the process before the first test | PR #50 `cdb5930`. Two attempts were made: embedding the manifest in every linked target fixed the tests but broke the release link with `CVT1100: duplicate resource type MANIFEST`, because the framework already embeds its own manifest through `resource.lib`. The dependency is instead removed at its source by leaving out the framework's optional `common-controls-v6` feature, so the library falls back to the message box of the user interface library. No binary depends on the side-by-side assembly any more. Proof: `cargo test --lib` reports 400 passed and 0 failed |
+| The speech recognition engine pulled the DirectX 12 libraries into the import table of every binary, so a Windows installation without the full graphics stack refused to start the program | High | the ONNX Runtime distribution that the build script downloads on Windows is compiled with the DirectML execution provider, so it declares `/DEFAULTLIB:d3d12.lib` and `/DEFAULTLIB:dxgi.lib` | PR #50 `c99f3e4`, the official CPU-only ONNX Runtime is loaded at runtime from a verified path and the DirectX dependency is gone |
 | The Tauri build script refuses to run without the SmartMic resources, so the Rust crate never compiled in the new jobs | Medium | `glob pattern resources/smartmic/* path not found` | PR #52, the resources are built first |
+| The frontend dependency tree was never audited, so a vulnerable transitive package could have shipped unnoticed | High | `scripts/audit-js-dependencies.py` against `osv.dev`: five advisories affected the locked versions | PR #54: `vite` 7.3.5 -> 7.3.7 closes GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv and GHSA-r825-w8mm-5pxw. GHSA-vfj7-8cjw-p6xm (`braces`, no patched release, needs an attacker-controlled glob pattern that only the build configuration provides) and GHSA-238p-pmpm-9mq7 (`katex`, pinned by the component library at `^0.16`, needs TeX rendered with `trust`, which the application never does) are accepted with their reason and fail the job if any other advisory appears |
 | The dependency audit found fourteen vulnerabilities on the lock file | High | `cargo audit` against `src-tauri/Cargo.lock` | PR #54, the reachable ones are fixed and the rest are listed with their reason |
 | The dependency audit could not publish its result | Low | `Resource not accessible by integration` | PR #54, the job now grants the `checks` permission |
+| The round-trip job never installed the ONNX Runtime that the engine loads, so the test could not have passed even once it was registered | **Critical** | the first honest run failed with `The ONNX Runtime is not installed, the speech recognition is unavailable` (run `39589886791`); the missing step was invisible while the test ran zero cases | PR #54 `5f5b474`: the job installs the official CPU-only distribution and exports `ORT_DYLIB_PATH`, like the two other jobs that load the engine |
+| A model whose download was interrupted was presented as "Ready, usable offline", and the first synthesis then failed in front of the user | High | the state followed the presence of the directory only; an unfinished Hugging Face download leaves the directory and a `<digest>.incomplete` blob | PR #54 `e913b2b`: three real signals are read instead of one guess (`<digest>.incomplete`, a zero byte weight, a snapshot entry whose blob is gone), the states `downloading` and `corrupted` are reported, `offline_ready` requires `ready` or `in_use`, and the interface and the French catalogue name the new states |
+| A compiled Python bytecode file was committed, and the root build directory was not ignored although local builds write 5.7 GB there | Low | `git log -- scripts/__pycache__/verify-pocket-tts-wave.cpython-313.pyc` names `59ea171`; `git status` listed `target/` as untracked | PR #54 `1dc497a`: the file leaves the index and the two patterns are ignored |
+| The diagnostic script that runs on a failed test launched the test binary with no argument, so the whole suite ran without a filter and reported an unrelated failure | Medium | the round-trip log of run `39589886791` contains `running 405 tests` and a failure in `commands::murmure_file` | PR #54 `5f5b474`: it now passes `--list`, which makes the harness print its test names without running them; the loader has already done its work at that point, which is the only thing the script observes |
+| A real-audio job failed on a Hugging Face rate limit, on a commit that only changed markdown | **Medium** | run `39604118615`: `Rate limited: We had to rate limit your IP (13.105.117.241)` in `Pocket TTS real French WAV on macOS`, while the same job had passed on the previous commit | PR #54 `017ee8f` is re-run to confirm the flake, and the three jobs that download the French weights now share one `actions/cache` entry for `~/.cache/huggingface`, with a three-attempt retry around the generation. The cache makes the download happen once; the retry covers the first run and a cache eviction, in the same spirit as the Clippy gate that already retries a dropped download |
+| The transcribed words were written to the log | **High** | ten statements in total: `debug!("Transcription written to clipboard {}", transcription)`, its "last transcription" twin, `debug!("SmartMic transcription result: {}", text)`, the three wake word handlers logging the recognized phrase on one line, and four more that spread the same phrase over several lines. A log file is written to disk, copied into bug reports and kept after the audio is deleted, so this is a privacy defect, not a verbosity defect | PR #54 `bb1d067`, `0c0da20` and `eb47928`: each statement logs a length instead. The last four were found by the gate, not by reading, and only after the gate was rewritten to read a macro as a whole statement instead of a line. `scripts/check-private-logs.py` refuses a logging macro whose argument is a bare identifier named `text`, `transcription`, `prompt`, `selection`, `content`, `speech`, `dictation` or `words`; against the code before the fix it reports ten, against the tree it reports none, and a synthetic multi-line case that the line-based version missed is reported. It runs in `Check Guidelines`, and job `119235736612` prints `PASS: 143 Rust files, no log statement carries user content`. The HTTP API server already logged only an identifier and a duration, and the CLI `transcribe` command prints the transcription on purpose, as its output |
+| An ignored test with a reason and no runner | **High** | `official_archive_extracts_untampered_binary_and_refuses_overwrite` and `cancelled_install_never_publishes_an_executable` need `MURMURE_TTS_OFFICIAL_ARCHIVE`, and no job ever set it, so neither had ever run anywhere | PR #54 `caf5b75`: the round-trip job already downloads and digest-checks that archive, so it now hands the bytes to both tests on one thread, and fails unless they report `2 passed` |
+| The packaged application shipped without `resources/onnxruntime/onnxruntime.dll`, so the speech engine could not load and every dictation failed | **Critical** | the log of the installed application repeats `the ONNX Runtime 1.23.2 (onnxruntime.dll) is not installed` every second, and no `onnxruntime.dll` exists next to the executable or in its resources. The packaging job copies the library into the resources; a local `pnpm tauri build` does not, and nothing said so | the library is placed in the bundled resources, `resources/onnxruntime/` is ignored by git, and `scripts/validate-packaged-windows.ps1` now reads the log and fails unless the engine reports `Transcription engine initialized and ready` |
+| The packaged validation watched the process but never the engine | **High** | `validate-packaged-windows.ps1` checked that the process survived twelve seconds, that no cache was created and that nothing was left behind. A package that starts and cannot transcribe passed all of it | the script now fails on `ONNX Runtime .* is not installed` and on a missing readiness line, so the next package that ships without its runtime fails in CI instead of on the user's machine |
+| A fully downloaded model was reported as not downloaded | **High** | the Hugging Face cache holds one snapshot per artifact: the weights, the tokenizer and the voice. The status required exactly one snapshot, so the real cache with three read as `not_installed` while 208.9 MB of weights sat on disk. The first real use of the product showed it | the snapshot that carries `.safetensors` files is the model, and the largest one when there are several; a test covers the real three-snapshot layout |
+| Selection reading refused without telling anyone | **Medium** | `speak_selection` emits `pocket-tts-selection-error` to the speech screen. The user presses `Ctrl+Alt+L` from another application and is not looking at that screen, so a refusal looked exactly like a shortcut that does nothing | the refusal is logged, and the capture itself was proven by selecting a sentence in Notepad and pressing the binding: a `pocket-tts` process and a temporary wave appeared |
+| Eight interface strings carried mojibake | **Medium** | `pocket-tts.tsx` held `\u00e2\u20ac\u201d` instead of an em dash and `\u00e2\u20ac\u00a6` instead of an ellipsis, the cp1252 reading of three UTF-8 bytes. The screen showed `French a-EUR- efficient CPU model`, and the French catalogue never matched those keys | the eight sequences are repaired, and the four keys that had no translation at all are added; all 55 keys of the speech screen now resolve in French |
+| The transcription was pasted into whatever had the focus after the overlay, which in a browser is the address bar | **Critical** | the paste sends `Ctrl+V` to the focused control, the overlay takes the focus, and a browser gives it back to its window chrome. Voice Mode happened to keep the focus, which is why the text landed correctly there and replaced the URL otherwise | PR #54 `143aba0`: the window that had the focus is remembered before the overlay appears and given back before the paste, with an 80 ms pause |
+| Reading the selection only asked the focused element for a text range | **High** | Chromium and Electron expose the selection on a descendant of the focused element, so the read worked in Notepad and answered that the application exposes no selection in browsers and chat clients | PR #54 `143aba0`: the search walks down, bounded to 400 elements, and takes the first element that carries exactly one non-empty selection |
 
 ---
+
+### 3.2 The five ignored tests and where each one runs
+
+A test that carries `#[ignore]` and never runs anywhere is the same false
+comfort as a green job that runs nothing. Each of the five is therefore
+listed with its reason and the job that actually executes it.
+
+| Test | Why it is ignored | Job that runs it |
+| --- | --- | --- |
+| `real_french_speech_is_transcribed` | Needs the 640 MB pinned Parakeet model and a real recording | `Pocket TTS to Parakeet French round trip` |
+| `real_silence_is_not_transcribed` | Same model, plus a recording that holds no speech | Same job, immediately after |
+| `official_archive_extracts_untampered_binary_and_refuses_overwrite` | Needs the official Kyutai ZIP, 7.5 MB, downloaded and digest-checked | The same job also downloads that archive, so it hands the bytes over |
+| `cancelled_install_never_publishes_an_executable` | Same archive | Same job, on one thread, because both share a process wide install guard |
+| `official_french_wav_decodes_with_the_production_decoder` | Needs a real WAV produced by the official Windows CLI | `Pocket TTS real French WAV decoded by Rodio` |
+
+Until `caf5b75` the two installer tests had a reason and no runner: no job
+ever set `MURMURE_TTS_OFFICIAL_ARCHIVE`, so they were never executed
+anywhere. They ran for the first time on the project owner's machine against
+the real archive (`2 passed`) before being wired into the job.
 
 ## 4. Known gaps and risks
 
 | Gap | Impact | Why it is still open |
 | --- | --- | --- |
 | The graphical user journey of the packaged application is not automated | The Definition of Done asks for a demonstrated full journey | Driving the Tauri interface needs a visible desktop session; the CI runner is headless. A reproducible protocol is in §6. |
-| The global pause/resume shortcut is missing from the head chain | MV-009 is a P0 issue | The implementation exists in `feat/tts-pause-resume-hotkey` (PR #36), which is **not** an ancestor of the current chain head. |
-| The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | `test/pocket-tts-real-wav-rodio` (PR #35) is not an ancestor of the chain head. |
-| The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Partly closed by PR #48: the catalog, the local state and the offline availability are exposed. The states that need weight integrity or download tracking remain open. |
-| Linux and macOS have no pinned Pocket TTS build | No TTS outside Windows | No official Kyutai release is pinned for those platforms; using an unverified binary is refused by design. |
-| The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | Closed by PR #52, which transcribes real French speech with the pinned Parakeet model, and by the STT map in §2.4. The device, permission and interruption scenarios stay manual. |
-| No dependency audit runs in CI | Known dependency vulnerabilities may go unnoticed | `cargo audit` / `osv-scanner` are not wired. |
+| Three of the eight lifecycle states have no real signal | A model can never be shown as `verifying`, `failed` or `removing`, because nothing produces those facts | `not_installed`, `downloading`, `corrupted`, `ready` and `in_use` are derived from the file system and are covered by tests. The weights are fetched by the official Pocket TTS CLI, which the application does not instrument, so there is no moment to observe as `verifying`, and a failure is reported on the generation rather than stored against the model. Reporting the missing three would mean inventing them, which this document refuses to do. |
+| Nothing prevented a screen from shipping a mouse-only control, an unnamed field or a reordered focus sequence | Accessibility depended on whoever reviewed the screen last | `scripts/audit-accessibility.py` audits the 133 screens of `src/features` for 2.1.1 (a clickable non-button needs a role and a keyboard handler), 4.1.2 (every field needs a name, explicit, implicit or by `aria-labelledby`), 1.1.1 (an image needs `alt`) and 2.4.3 (a positive `tabIndex` is refused). It found one real defect: the WAV file picker kept a hidden but focusable and unnamed file input in the tab order, now removed from both. It runs in `Check Guidelines`, so the next screen with one of those patterns fails the build. |
+| Contrast and screen-reader behaviour were asserted rather than measured | A palette change could drop the interface below AA without anybody noticing | `scripts/check-contrast.py` now converts the `oklch()` tokens of the dark theme to sRGB and checks them against WCAG 2.2: body text 16.11:1, secondary text 6.74:1 (5.66:1 on a card), error text 6.13:1, warning text 8.26:1, focus indicator 3.67:1, all above their thresholds. The component boundary measures 1.71:1 and is reported as advisory, because every control carries a text label and Understanding 1.4.11 does not require a boundary in that case. The check runs in `Check Guidelines`, so a regression fails the build. Screen-reader reading still needs a manual pass. |
+| Two of the four POSIX targets are pinned but never exercised | Anyone on `aarch64` Linux or `x86_64` macOS relies on a digest that no run has reproduced | The official release publishes `aarch64-unknown-linux-gnu` and `x86_64-apple-darwin`, and both are pinned with their archive and executable digests. Continuous integration exercises `x86_64-unknown-linux-gnu` (job `119154672419`) and `aarch64-apple-darwin` (job `119154672275`), which produced a real French WAV of 3.48 s at 24 kHz. The other two targets are refused at run time rather than trusted, and are listed as unqualified. |
+| The interface rows of the STT qualification stay manual | The engine and the capture path are proven; what the shortcut does on a real desktop is not | The pinned model transcribes a real recording, and a real capture from this machine's microphone reached the same engine (§6.1.1, §6.1.2). The fifteen interface rows of §6.1 need a human at the desktop, and they are listed with their exact status instead of being assumed. |
 | Error messages from the Rust backend reach the French interface untranslated | Reduced UX quality | The backend returns English strings; the frontend shows them verbatim. |
 
 ---
@@ -232,6 +285,44 @@ Every claim in this document can be traced to a job in
 This protocol covers what the headless CI cannot prove. It must be run on a
 Windows machine with a visible desktop, a speaker and a microphone.
 
+### 6.0 Executed on a real Windows desktop
+
+The whole install cycle and part of the interface journey were executed on the
+project owner's machine, so they are evidence rather than protocol. The
+interface was driven through Windows UI Automation, which reaches the WebView2
+tree, so the clicks below are real clicks on the real screen.
+
+| Step | Status | What happened |
+| --- | --- | --- |
+| 1. Build and install | **PROVEN** | NSIS bundle 590 MB, silent install 61 s, 16 files, 666.4 MB, registry entry `murmure 2.0.3`, silent uninstall removing the directory and the key |
+| 2. Open Extensions → Text to Speech | **PROVEN** | the submenu was expanded and the screen opened; its whole tree was read |
+| 3. No CPU compatibility notice on an AVX2 machine | **PROVEN** | no such notice on the screen |
+| 4. Runtime reported as not installed, install button offering the pinned release | **PROVEN** | "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié." with the button and the link to the official release |
+| 5. Install the runtime, watch progress, cancel, reinstall | **PARTIAL** | installed from the interface and the executable landed in `%LOCALAPPDATA%\com.al1x-ai.murmure\pocket-tts\bin`, 21.1 MB. The cancel path was not exercised from the interface; it is covered by `cancelled_install_never_publishes_an_executable` in CI |
+| 6. No model cache before consent | **PROVEN** | the model list read "Pas encore téléchargé" and no cache directory existed |
+| 7. Grant consent, run a French preview, audio produced | **PROVEN** | consent toggled on, the buttons enabled, the preview started, the French weights downloaded (432.7 MB, `model.safetensors` 208.9 MB plus tokenizer and the `estelle` voice) and the run completed with the temporary wave cleaned up |
+| 8. Pause, resume and stop from the interface | **PARTIAL** | the play button is wired: invoking it from the interface started a real generation. During playback the screen showed `Pause` and `Arrêter` enabled with `Reprendre` disabled, which is the expected transport state. The three buttons were not clicked, and the bindings were not pressed |
+| 9. Change the volume and hear it on the next playback | **NOT EXECUTED** | the slider reads 80 % and is wired to `set_tts_volume`, applied at the next playback; nobody moved it |
+| 10. Read a selection with the global shortcut | **PROVEN** | a Notepad window held a French sentence, select all, then `Ctrl+Alt+L`: a `pocket-tts` process and a temporary wave appeared. The same press was repeated with the right Alt alone, which sends `Ctrl+Alt`, so `AltGr + L` works with one hand; `AltGr + K` and `AltGr + P` are the same registered combination for the other two bindings |
+| 11. Close the window, stay in the tray, quit from the tray | **PARTIAL** | the window closes to the tray and the process stays alive, confirmed twice; quitting from the tray menu was not exercised |
+| 12. Restart offline and reuse the cache | **NOT EXECUTED** | the weights are cached, so the next start needs no network, but the restart with the network disabled was not performed |
+| 13. Delete the model cache and keep the runtime | **NOT EXECUTED** | covered by `clearing_the_model_cache_never_removes_the_installed_runtime` in CI, not by a click |
+
+The shortcut page was opened and read: it lists `Ctrl + Alt + K` for stopping
+the speech, `Ctrl + Alt + P` for pausing and resuming it, and `Ctrl + Alt + L`
+for reading the selection, each as an editable button with its own explanation.
+The bindings are therefore reachable and changeable from the interface, not
+only stored in a file.
+
+What the interface run proved beyond the checklist: the packaged application
+shipped **without** `resources/onnxruntime/onnxruntime.dll`, so the speech
+engine could not load and every dictation failed with `The ONNX Runtime is not
+installed`. The packaging job already copies the library there; the local
+build did not, and the validation script only watched the process, so a
+package that cannot transcribe passed. Both are fixed.
+
+
+
 1. Build and install the packaged application
    (`pnpm tauri build --bundles nsis`, then run the NSIS installer).
 2. Open **Extensions → Text to Speech**.
@@ -255,6 +346,111 @@ Windows machine with a visible desktop, a speaker and a microphone.
 
 ---
 
+### 6.1 Microphone and speech recognition
+
+The continuous integration never touches a microphone, so the interface
+scenarios below still need a human at a desktop with an input device. One
+part, however, has been executed for real and is recorded in §6.1.1: the
+capture path of this machine and the transcription of audio that came
+through the air rather than from a reference file.
+
+Record the outcome of each one.
+
+| # | Scenario | What to do | What must happen |
+| --- | --- | --- | --- |
+| 1 | First recording | Press the recording shortcut, say a French sentence, press it again | A transcription appears, the audio that was captured matches what was said, and no recording starts before the shortcut |
+| 2 | Repeated recording | Do the first scenario three times in a row | Every attempt produces its own transcription, and no recording stays open between them |
+| 3 | Manual stop | Start a recording and stop it by hand after two seconds | The recording stops immediately and the short audio is transcribed rather than discarded |
+| 4 | Long recording | Record for the longest duration the interface allows | The recording ends at the limit without losing the beginning, and the transcription arrives |
+| 5 | Silence | Record five seconds of silence | The result is empty or a clear message, never invented text |
+| 6 | Absent input | Disable the microphone in the system settings, then record | A message names the missing device; the application does not hang and does not crash |
+| 7 | Permission refused | Remove the microphone permission of the application, then record | A message states that permission is required, with no silent failure |
+| 8 | Permission revoked | Start with permission granted, revoke it while the application runs, then record | The revocation is noticed on the next attempt, and the application recovers once permission returns |
+| 9 | Device change | Plug or unplug a microphone, or switch the default device, then record | The next recording uses the new device without restarting the application |
+| 10 | System interruption | Put the machine to sleep during a recording and wake it | The session ends cleanly, the microphone is released, and the tray shows an idle state |
+| 11 | Absent model | Move the speech model directory away, then record | A message names the missing model; no partial transcript is produced |
+| 12 | Corrupted model | Truncate one model file, then record | The failure is reported as such, and the application stays usable after the file is restored |
+| 13 | Restart after a failure | After any failure above, restart the application and record again | The first recording after the restart succeeds |
+| 14 | Rapid triggers | Press the recording shortcut four times quickly | Exactly one recording runs; the running audio is never discarded |
+| 15 | Concurrent shortcuts | Press the recording shortcut and a text-to-speech shortcut together | The two do not interleave: either one is refused with a message, or they run one after the other |
+
+#### 6.1.1 Executed: real capture device and real transcription
+
+This part does not need the interface and was executed, so it is evidence
+rather than protocol.
+
+- Machine: Windows desktop, Realtek High Definition Audio. Two capture
+  devices are exposed, and the Windows multimedia registry reports
+  `Microphone Array` and `Headset` as active (`DeviceState = 1`).
+- Capture: `ffmpeg -f dshow` opened
+  `Microphone Array (Intel® Smart Sound Technology for Digital Microphones)`
+  and recorded 9 s at 16 kHz mono. The measured file holds 143 792 frames,
+  8.99 s, peak 8 008 (24.4 % of full scale), RMS 628. A device that never
+  opened would have produced no file; a muted path would have produced a
+  peak near zero.
+- Signal: while the capture ran, the speaker played the French sample that
+  Pocket TTS generated on this same machine (`french-smoke.wav`, 3.64 s,
+  24 000 Hz, peak 10 268) twice. The audio therefore travelled through the
+  air, not through a cable or a shared buffer.
+- Transcription by the pinned engine, run from the local test binary:
+  `engine load: 1.90 s, transcription: 1.11 s for 8.99 s of audio, real time
+  factor 0.123`, output `"en moche chris est dans lessai de chante du local
+  local"`. The words are recognisable and corrupted in the way a far-field
+  laptop microphone corrupts a speaker; the point is that real captured
+  audio reached the real model and produced real words.
+- The same binary, given the clean generated sample, returned
+  `"bonjour ceci est un essai de synthese vocale locale"` after loading in
+  2.08 s and transcribing 3.64 s in 0.76 s (real time factor 0.208), which
+  reproduces the result the job `119192646552` reported.
+
+What this proves: the capture device opens, delivers samples, and its audio
+is transcribed by the pinned model on this hardware. What it does not
+prove: every row above, because those rows drive the interface and change
+the device or the permission while the application runs.
+
+#### 6.1.2 Executed: silence produces no words
+
+The opposite failure is worse than a missing transcription: a model that
+turns room noise into a sentence would write text nobody said.
+
+- Five seconds were captured from the same device with no sound played.
+  The file holds 79 776 frames, peak 736 (2.2 % of full scale), RMS 38,
+  which is room hiss rather than speech.
+- The engine returned an empty string for it, and the guard in the test
+  refuses a fixture that carries speech (`peak < 0.05`), so the test cannot
+  silently assert the opposite of its claim.
+- The counter-test is now permanent: `real_silence_is_not_transcribed` runs
+  in the round-trip job against a fixture generated with a fixed seed
+  (`scripts/make-silence-wav.py`), because a runner has no microphone. The
+  local run above is the hardware evidence; the job is the regression gate.
+
+
+### 6.2 Screen reader
+
+The contrast and the structure are measured by the pipeline, but the
+announcement order is not. Run this with Narrator on Windows, or VoiceOver on
+macOS, and record what is announced.
+
+| # | Scenario | What must happen |
+| --- | --- | --- |
+| 1 | Reach the speech screen with the keyboard only | Every control is reachable in reading order, and the focus indicator is always visible |
+| 2 | Focus the consent checkbox | Its purpose is announced in French, and its state is announced when it changes |
+| 3 | Start a runtime installation | The progress is announced as a value that changes, not only as a moving sentence |
+| 4 | Trigger an error | The message is announced without moving the focus away from where the user is |
+| 5 | Focus the disabled speak button | The reason it is disabled is available to the screen reader, not only visually |
+| 6 | Play, pause, resume, stop | Each state change is announced once, and the announcements do not overlap |
+| 7 | Leave the screen with the keyboard | The focus never becomes trapped and never disappears |
+
+### 6.3 Recording the results
+
+Each row above is recorded with its date, the version under test, and its
+outcome. A row that was not run stays untested: it must not be marked as
+passed by omission. Once every row has an outcome, the verdict in §7 can move
+to **CONDITIONAL GO** for the rows that passed, and the rows that failed
+become defect reports.
+
+---
+
 ## 7. Verdict
 
 **NO-GO** at the time of writing.
@@ -275,7 +471,8 @@ that the Definition of Done is not yet met:
 
 The verdict can move to **CONDITIONAL GO** once the manual protocol in §6
 has been executed and recorded, and to **GO** once the remaining `TODO`
-rows of §3 are closed with evidence. The limitation that cannot be closed
-by this fork is the absence of an official Pocket TTS build for Linux and
-macOS; that is a platform limit, not a defect, and it is recorded rather
-than papered over.
+rows of §3 are closed with evidence. The Linux and macOS TTS gap is not a
+platform limit: the official release publishes those binaries, and the
+digests are pinned above. Closing it needs a POSIX verification script, a
+POSIX installer and a real-audio CI job per platform — work that is
+identified and tracked, not impossible.

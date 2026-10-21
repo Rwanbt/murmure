@@ -20,6 +20,14 @@ export const WavFilePicker = ({ file, onChange, testId }: WavFilePickerProps) =>
                 type="file"
                 accept=".wav,audio/wav,audio/x-wav"
                 className="hidden"
+                // The visible button is the control: it carries the name and
+                // receives the focus. The input only exists to open the file
+                // dialogue, so it is removed from the tab order and hidden
+                // from assistive technology. Without this, keyboard users
+                // focus an invisible field and screen readers announce an
+                // unnamed control (2.4.3 and 4.1.2).
+                tabIndex={-1}
+                aria-hidden="true"
                 onChange={(event) => onChange(event.target.files?.[0] ?? null)}
                 data-testid={`${testId}-input`}
             />

@@ -50,6 +50,13 @@ pub const FRENCH_MODELS: [PocketTtsModel; 2] = [
 pub enum ModelState {
     /// The weights are not available locally.
     NotInstalled,
+    /// The repository holds a file the downloader never finished, so the
+    /// weights are present in part. The Hugging Face client keeps such files
+    /// as `<digest>.incomplete` until a download completes.
+    Downloading,
+    /// The weights are on disk but cannot be used: an empty file, or a
+    /// snapshot entry whose blob is gone.
+    Corrupted,
     /// The weights are available locally and were loaded at least once.
     Ready,
     /// A synthesis is currently using the model.
@@ -87,28 +94,76 @@ fn repository_cache_dir(cache: &Path, repository: &str) -> PathBuf {
         .join(format!("models--{}", repository.replace('/', "--")))
 }
 
+/// Whether a directory holds a `.safetensors` file at any depth.
+///
+/// The cache gives the weights, the tokenizer and the voice their own
+/// snapshot, and all three live under the same `languages/<model>` path, so
+/// the presence of the directory proves nothing. The weights are the
+/// `.safetensors` files, which is why they decide.
+fn holds_weights(directory: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return false;
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        let is_directory = entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false);
+        if is_directory {
+            if holds_weights(&path) {
+                return true;
+            }
+        } else if path
+            .file_name()
+            .map(|name| name.to_string_lossy().ends_with(".safetensors"))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Locate the weights of a model inside a Hugging Face cache.
 ///
-/// The cache holds one snapshot directory per revision. When more than one
-/// is present the local state is ambiguous, so nothing is reported: a model
-/// is never presented as ready when its presence cannot be established.
+/// The cache creates one snapshot directory per artifact requested, so a
+/// complete download normally holds several snapshots and the number alone
+/// says nothing. Among the snapshots that hold the model directory, the one
+/// that carries `.safetensors` files is the weights, and when several do the
+/// largest is taken: the weights are the bulk of a model, and choosing one is
+/// better than reporting a downloaded model as absent.
 fn locate_model(cache: &Path, model: &PocketTtsModel) -> Option<(PathBuf, Option<String>)> {
     let repository = repository_cache_dir(cache, model.repository);
     let snapshots = repository.join("snapshots");
-    let revisions = std::fs::read_dir(&snapshots)
+    let candidates = std::fs::read_dir(&snapshots)
         .ok()?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .filter(|path| path.is_dir())
+        .filter(|path| path.join(model.directory).is_dir())
         .collect::<Vec<_>>();
-    if revisions.len() != 1 {
+    if candidates.is_empty() {
         return None;
     }
-    let revision = revisions[0]
+
+    let with_weights = candidates
+        .iter()
+        .filter(|snapshot| holds_weights(&snapshot.join(model.directory)))
+        .collect::<Vec<_>>();
+
+    let chosen = if with_weights.is_empty() {
+        // The directory exists but holds no recognisable weights. It is still
+        // the model's directory, and the completeness check reports it.
+        candidates.first()?.clone()
+    } else {
+        with_weights
+            .into_iter()
+            .max_by_key(|snapshot| directory_size(&snapshot.join(model.directory)))?
+            .clone()
+    };
+
+    let revision = chosen
         .file_name()
         .map(|name| name.to_string_lossy().into_owned());
-    let weights = revisions[0].join(model.directory);
-    weights.is_dir().then_some((weights, revision))
+    Some((chosen.join(model.directory), revision))
 }
 
 /// Total size of the files below a directory.
@@ -129,6 +184,45 @@ fn directory_size(path: &Path) -> u64 {
         .sum()
 }
 
+/// Whether every file below the weights directory can actually be read.
+///
+/// A Hugging Face snapshot holds entries that point at blobs. When a download
+/// was interrupted the snapshot can exist while a blob it names does not, so
+/// the directory looks present and the synthesis fails later. A zero byte
+/// file is the other shape of the same failure, and a directory with no file
+/// at all proves nothing.
+fn weights_are_complete(weights: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(weights) else {
+        return false;
+    };
+    let mut found = false;
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let path = entry.path();
+        // Following the link is the point: a dangling one has no metadata.
+        let Ok(metadata) = std::fs::metadata(&path) else {
+            return false;
+        };
+        if metadata.is_dir() && !weights_are_complete(&path) {
+            return false;
+        }
+        if !metadata.is_dir() && metadata.len() == 0 {
+            return false;
+        }
+        found = true;
+    }
+    found
+}
+
+/// Whether the repository still holds an unfinished download.
+fn download_is_unfinished(repository: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(repository.join("blobs")) else {
+        return false;
+    };
+    entries
+        .filter_map(|entry| entry.ok())
+        .any(|entry| entry.file_name().to_string_lossy().ends_with(".incomplete"))
+}
+
 /// Describe the local state of every supported model.
 ///
 /// `in_use` lists the model currently being synthesized, if any.
@@ -136,12 +230,13 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
     FRENCH_MODELS
         .iter()
         .map(|model| {
+            let repository = repository_cache_dir(cache, model.repository);
             let located = locate_model(cache, model);
             let present = located.is_some();
-            let (revision, local_bytes) = match located {
+            let (revision, local_bytes) = match &located {
                 Some((weights, revision)) => {
-                    let bytes = directory_size(&weights);
-                    (revision, (bytes > 0).then_some(bytes))
+                    let bytes = directory_size(weights);
+                    (revision.clone(), (bytes > 0).then_some(bytes))
                 }
                 None => (None, None),
             };
@@ -149,9 +244,19 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
                 ModelState::NotInstalled
             } else if in_use == Some(model.id) {
                 ModelState::InUse
+            } else if download_is_unfinished(&repository) {
+                ModelState::Downloading
+            } else if !located
+                .as_ref()
+                .is_some_and(|(weights, _)| weights_are_complete(weights))
+            {
+                ModelState::Corrupted
             } else {
                 ModelState::Ready
             };
+            // A partial or unreadable model is not usable without a network,
+            // whatever its directory looks like.
+            let offline_ready = matches!(state, ModelState::Ready | ModelState::InUse);
             PocketTtsModelStatus {
                 id: model.id,
                 repository: model.repository,
@@ -159,7 +264,7 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
                 license: model.license,
                 state,
                 present,
-                offline_ready: present,
+                offline_ready,
                 revision,
                 local_bytes,
             }
@@ -239,15 +344,159 @@ mod tests {
         std::fs::remove_dir_all(cache).ok();
     }
 
+    /// The real cache holds one snapshot per artifact: the weights, the
+    /// tokenizer and the voice each get their own, and all three sit under
+    /// the same `languages/french` path. Only the snapshot that carries a
+    /// `.safetensors` file is the model, so three snapshots are not
+    /// ambiguous. Treating them as ambiguous made a fully downloaded model
+    /// read as "not downloaded".
     #[test]
-    fn an_ambiguous_cache_is_never_reported_as_ready() {
+    fn several_snapshots_are_not_ambiguous_when_only_one_carries_the_weights() {
+        let cache = empty_cache();
+        write_weights(&cache, "weights", "languages/french");
+        let repository = repository_cache_dir(&cache, FRENCH_REPOSITORY);
+
+        let tokenizer = repository
+            .join("snapshots")
+            .join("tokenizer")
+            .join("languages/french");
+        std::fs::create_dir_all(&tokenizer).unwrap();
+        std::fs::write(tokenizer.join("tokenizer.json"), b"{}").unwrap();
+
+        let voice = repository
+            .join("snapshots")
+            .join("voice")
+            .join("languages/french/embeddings");
+        std::fs::create_dir_all(&voice).unwrap();
+        std::fs::write(voice.join("estelle.safetensors"), b"voice").unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Ready);
+        assert!(statuses[0].offline_ready);
+        assert_eq!(statuses[0].revision.as_deref(), Some("weights"));
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// Two snapshots that both carry weights are two revisions of the same
+    /// model. The cache cannot say which one the user asked for, so the
+    /// largest is taken: the weights are the bulk of a model, and returning
+    /// "not installed" for a directory that holds 200 MB of weights was the
+    /// mistake that made a fully downloaded model read as absent.
+    #[test]
+    fn two_weight_snapshots_resolve_to_the_largest() {
+        let cache = empty_cache();
+        write_weights(&cache, "small", "languages/french");
+        let bigger = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+            .join("snapshots")
+            .join("bigger")
+            .join("languages/french");
+        std::fs::create_dir_all(&bigger).unwrap();
+        std::fs::write(bigger.join("model.safetensors"), vec![0_u8; 4096]).unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Ready);
+        assert!(statuses[0].present);
+        assert_eq!(statuses[0].revision.as_deref(), Some("bigger"));
+        assert_eq!(statuses[0].local_bytes, Some(4096));
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// A zero byte weight file is a download that stopped in the middle. The
+    /// directory exists and holds the expected name, so a check based on
+    /// presence alone would present it as ready and the synthesis would fail
+    /// in front of the user.
+    #[test]
+    fn an_empty_weight_file_is_never_reported_as_ready() {
+        let cache = empty_cache();
+        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+            .join("snapshots")
+            .join("abc123")
+            .join("languages/french");
+        std::fs::create_dir_all(&weights).unwrap();
+        std::fs::write(weights.join("model.safetensors"), b"").unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Corrupted);
+        assert!(statuses[0].present);
+        assert!(!statuses[0].offline_ready);
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// An empty weights directory proves nothing: it is what an interrupted
+    /// extraction leaves behind.
+    #[test]
+    fn an_empty_weights_directory_is_never_reported_as_ready() {
+        let cache = empty_cache();
+        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+            .join("snapshots")
+            .join("abc123")
+            .join("languages/french");
+        std::fs::create_dir_all(&weights).unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Corrupted);
+        assert!(!statuses[0].offline_ready);
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// Weights organised in subdirectories are complete as soon as their
+    /// leaves hold data. A check that only counted the files at the top would
+    /// call such a layout empty and refuse a perfectly usable model.
+    #[test]
+    fn weights_in_a_subdirectory_are_reported_as_ready() {
+        let cache = empty_cache();
+        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+            .join("snapshots")
+            .join("abc123")
+            .join("languages/french");
+        std::fs::create_dir_all(weights.join("codec")).unwrap();
+        std::fs::write(weights.join("codec/model.bin"), b"weights").unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Ready);
+        assert!(statuses[0].offline_ready);
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// The Hugging Face client names an unfinished blob `<digest>.incomplete`.
+    /// While one is present the model is still downloading, even if a snapshot
+    /// directory was already created.
+    #[test]
+    fn an_unfinished_blob_is_reported_as_downloading() {
         let cache = empty_cache();
         write_weights(&cache, "abc123", "languages/french");
-        write_weights(&cache, "def456", "languages/french");
+        let blobs = repository_cache_dir(&cache, FRENCH_REPOSITORY).join("blobs");
+        std::fs::create_dir_all(&blobs).unwrap();
+        std::fs::write(blobs.join("deadbeef.incomplete"), b"partial").unwrap();
+
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::NotInstalled);
-        assert!(!statuses[0].present);
-        assert!(statuses[0].revision.is_none());
+        assert_eq!(statuses[0].state, ModelState::Downloading);
+        assert!(!statuses[0].offline_ready);
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// A snapshot entry whose blob disappeared is unusable, and following the
+    /// link is the only way to notice.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_snapshot_link_is_never_reported_as_ready() {
+        use std::os::unix::fs::symlink;
+
+        let cache = empty_cache();
+        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+            .join("snapshots")
+            .join("abc123")
+            .join("languages/french");
+        std::fs::create_dir_all(&weights).unwrap();
+        symlink(
+            cache.join("blobs/absent"),
+            weights.join("model.safetensors"),
+        )
+        .unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        assert_eq!(statuses[0].state, ModelState::Corrupted);
+        assert!(!statuses[0].offline_ready);
         std::fs::remove_dir_all(cache).ok();
     }
 }
