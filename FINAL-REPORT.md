@@ -42,8 +42,7 @@ Every one of these was a real behaviour defect, not a style issue.
 | A hidden but focusable file input trapped keyboard focus | **Medium** | New screen audit |
 | The install progress was a sentence, not a value | **Medium** | Static review |
 
-Two claims made earlier in this effort were **wrong and were corrected**:
-
+Four claims made earlier in this effort were **wrong and were corrected**:
 1. "No official Pocket TTS build exists for Linux or macOS." It does: release
    `v4.0.0` publishes five targets with their digests in `SHA256SUMS`. The
    claim had been inferred from the single archive the fork pinned.
@@ -61,6 +60,14 @@ Two claims made earlier in this effort were **wrong and were corrected**:
    Runtime the engine loads, which nobody could notice while the test was not
    running. With both fixed, the job passes on a real transcription
    (`5f5b474`, job `119192646552`).
+4. "A first start of the application writes nothing." It does: the first
+   launch creates `%APPDATA%\com.al1x-ai.murmure` with the settings, the
+   dictionary, the formatting rules, the LLM connection file and five
+   aggregate counters. The claim came from checking `com.murmure.app` and
+   `murmure`, which are not the identifier this application uses, and
+   concluding from the absence of a directory that nothing was written. What
+   matters for privacy still holds and is now verified: no recording, no
+   transcript and no audio file is stored there.
 
 ## 3. Pull requests
 
@@ -86,7 +93,7 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | Unit tests | **PROVEN** (400 passed) | **PROVEN** | **PROVEN** | not exercised |
 | Real engine, real French audio | **PROVEN** | **PROVEN** (job `119154672419`) | **PROVEN** (job `119154672275`) | pinned but **not exercised** |
 | Offline audio | **PROVEN** | not exercised | not exercised | no |
-| Packaged application, installed and launched | **PROVEN** | no packaging | no packaging | no |
+| Packaged application, installed and launched | **PROVEN** on a real desktop: NSIS 590 MB, silent install 61 s, launch, silent uninstall, settings preserved | no packaging | no packaging | no |
 | Graphical user journey | **BLOCKED** — headless runner | **BLOCKED** | **BLOCKED** | **BLOCKED** |
 | Audio device, permission refused or revoked, device change | **BLOCKED** — no hardware | **BLOCKED** | **BLOCKED** | **BLOCKED** |
 | STT transcription | **PROVEN** (real engine on a real reference recording, and on a real capture from this machine's microphone) | compilation only | compilation only | no |

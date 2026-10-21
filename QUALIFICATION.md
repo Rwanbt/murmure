@@ -161,7 +161,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 1 | Continuous real-audio CI gate | P0 | DONE | `test/pocket-tts-offline-cache-windows` | #31 | `e26761c` | CI on PR #31 | real French WAV 19 s, cached WAV 25 s, qualification gate pass | historical runs of PRs #33–#39 still show the old skip | GitHub does not re-run CI when only a base branch moves | Merge bottom-up; the gate then covers every later pull request |
 | 2 | Model cache isolation and credential hygiene | P0 | DONE | `fix/pocket-tts-script-powershell-contract` | #40 | `e924b2e` | 11 deterministic checks | green in CI | — | — | — |
 | 3 | Shared structural WAV validator | P0 | DONE | `test/pocket-tts-wav-validator-contract` | #41 | `4506c0c` | 11 deterministic checks | green in CI | — | — | — |
-| 4 | Packaged Windows application | P0 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `e913b2b` | the CI job plus a local release build and launch | Job `119192646518`: every step green, including "Install, launch and uninstall the packaged application". Locally: `target/release/murmure.exe`, 27.7 MB, window `Murmure`, 39 threads, 52 MB, no orphan, no data directory created (§6.0) | the interactive journey (steps 2 to 10 and 12 to 13) needs a human at the desktop | — | run §6 |
+| 4 | Packaged Windows application | P0 | IN_PROGRESS | `fix/dependency-advisories` | #54 | `adbef67` | the CI job, then a full install cycle on a real desktop | Job `119192646518`: every step green. Locally: NSIS bundle 590 MB, silent install exit 0 in 61 s (16 files, 666.4 MB), registry entry `murmure 2.0.3`, launch with window `Murmure`, 39 threads, 50 MB, no orphan, silent uninstall exit 0 removing the directory and the key, user settings preserved (§6.0) | the interactive journey (steps 2 to 10 and 12 to 13) needs a human at the desktop | — | run §6 |
 | 5 | rustfmt compliance for the T0 gate | P1 | DONE | `chore/rustfmt-pocket-tts-chain` | #43 | `e7eaa0b` | `cargo fmt --check` | 0 differences | — | — | — |
 | 6 | Cache never deletes the runtime | P0 | DONE | `fix/tts-model-cache-preserves-runtime` | #44 | `4553cf8` | 6 deterministic checks | green in CI | — | — | — |
 | 7 | Generation supervision failure modes | P0 | DONE | `test/pocket-tts-generation-supervision` | #45 | `ee3abab` | 5 deterministic checks | green in CI | — | — | — |
@@ -257,24 +257,37 @@ Windows machine with a visible desktop, a speaker and a microphone.
 
 ### 6.0 Executed on a real Windows desktop
 
-Steps 1, 11 and part of the install path were executed on the project owner's
+Steps 1, 11 and the whole install cycle were executed on the project owner's
 machine, so they are evidence rather than protocol.
 
-- Build: `pnpm build` then `pnpm tauri build --no-bundle` on Windows with the
-  pinned Rust toolchain. The release profile finished in 19 min 34 s and
-  produced `target/release/murmure.exe`, 27.7 MB.
-- Launch: the executable was started and observed for 12 s. It reported a
-  main window titled `Murmure`, 39 threads and a 52 MB working set, so the
-  window, the tray and the audio stack all came up.
-- Shutdown: `CloseMainWindow` does not stop a tray application, as designed;
-  the process was then asked to stop, and `Get-Process murmure` returned zero
-  entries afterwards. No orphan process remained.
-- Leftovers: no `%LOCALAPPDATA%\com.murmure.app`, no `%APPDATA%\murmure` and no
-  audio cache directory existed before the launch, and none existed after it,
-  so a first start without consent writes nothing.
-- Not executed here: the installer (the CI job `119192646518` builds, installs,
-  launches and uninstalls it, every step green), and steps 2 to 10 and 12 to 13,
-  which need a human to click through the interface.
+- Build: `pnpm build` then `pnpm tauri build` on Windows with the pinned Rust
+  toolchain. The release profile finished in 19 min 34 s and produced
+  `target/release/murmure.exe`, 27.7 MB. The NSIS bundle
+  `murmure_2.0.3_x64-setup.exe` is 590 MB, because the speech model travels
+  inside it.
+- Clean install: the target directory, the registry key and the installed
+  program were absent before the run. `murmure_2.0.3_x64-setup.exe /S`
+  exited 0 after 61 s and installed 16 files, 666.4 MB, in
+  `%LOCALAPPDATA%\murmure`, with `murmure.exe` and `uninstall.exe` present.
+  The uninstall entry registered `murmure`, version 2.0.3.
+- Launch of the installed application: the executable opened a window titled
+  `Murmure`, 39 threads, 50 MB of working set, and it was still alive after
+  12 s. It was then stopped, and `Get-Process murmure` returned zero entries.
+- Uninstall: `uninstall.exe /S` exited 0; the install directory and the
+  uninstall registry key were both gone afterwards. No orphan process
+  remained.
+- Persisted data: a first start creates `%APPDATA%\com.al1x-ai.murmure` with
+  `settings.json` (59 keys: shortcuts, modes, text to speech preferences),
+  `dictionary.json`, `formatting_rules.json`, `llm_connect.json` and
+  `stats_aggregated.json` (five aggregate counters: words per minute sums,
+  words this month, last reset, total audio bytes). No recording, no
+  transcript and no audio file is written there, and the uninstaller leaves
+  the directory in place, so a reinstall keeps the user's settings. An
+  earlier claim in this document said that a first start wrote nothing: it
+  was wrong, because the paths checked were `com.murmure.app` and `murmure`
+  instead of the identifier the application actually uses.
+- Not executed here: steps 2 to 10 and 12 to 13, which need a human to click
+  through the interface.
 
 1. Build and install the packaged application
    (`pnpm tauri build --bundles nsis`, then run the NSIS installer).
