@@ -181,10 +181,31 @@ jobs:
                           f'{name}: pinned {digest} but the release publishes {upstream[name]}')
                       print(f'PASS: {name} matches the published digest')
                   PY
+            # The weights come from Hugging Face on every run, and the
+            # shared runner address is occasionally rate limited: run
+            # 39604118615 failed that way on a commit that only changed a
+            # markdown file. The cache makes the download happen once and
+            # the retry covers the first run and a cache eviction. Bump the
+            # key when the pinned model revision changes.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
             - name: Generate and verify a real French WAV
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
-              run: bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+              run: |
+                  # A rate limit is a network fault, not a code fault, so
+                  # the step is retried before it fails, like the Clippy gate.
+                  for attempt in 1 2 3; do
+                      if bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts-$attempt"; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt did not produce the French WAV; waiting before retrying."
+                      sleep 60
+                  done
+                  echo "The real French WAV could not be generated after 3 attempts."
+                  exit 1
 
     pocket-tts-macos-real-audio:
         name: Pocket TTS real French WAV on macOS
@@ -196,10 +217,31 @@ jobs:
             - uses: actions/checkout@v4
             - name: Validate the WAV validator itself
               run: python3 scripts/test-pocket-tts-wave-posix.py
+            # The weights come from Hugging Face on every run, and the
+            # shared runner address is occasionally rate limited: run
+            # 39604118615 failed that way on a commit that only changed a
+            # markdown file. The cache makes the download happen once and
+            # the retry covers the first run and a cache eviction. Bump the
+            # key when the pinned model revision changes.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
             - name: Generate and verify a real French WAV
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
-              run: bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+              run: |
+                  # A rate limit is a network fault, not a code fault, so
+                  # the step is retried before it fails, like the Clippy gate.
+                  for attempt in 1 2 3; do
+                      if bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts-$attempt"; then
+                          exit 0
+                      fi
+                      echo "Attempt $attempt did not produce the French WAV; waiting before retrying."
+                      sleep 60
+                  done
+                  echo "The real French WAV could not be generated after 3 attempts."
+                  exit 1
 
     pocket-tts-model-isolation:
         name: Pocket TTS model cache isolation contract
@@ -221,12 +263,30 @@ jobs:
             contents: read
         steps:
             - uses: actions/checkout@v4
+            # Same treatment as the POSIX jobs: one cache shared by every
+            # job that needs the French weights, and a retry because a
+            # Hugging Face rate limit is a network fault, not a code fault.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
             - name: Generate genuine local French CPU audio and validate WAV
               shell: pwsh
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
               run: |
-                  ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french" -GenerateFrench
+                  $ErrorActionPreference = 'Stop'
+                  for ($attempt = 1; $attempt -le 3; $attempt++) {
+                      try {
+                          ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-french-$attempt" -GenerateFrench
+                          exit 0
+                      } catch {
+                          Write-Output "Attempt $attempt failed: $($_.Exception.Message)"
+                          Write-Output "Waiting before retrying."
+                          Start-Sleep -Seconds 60
+                      }
+                  }
+                  throw 'The real French WAV could not be generated after 3 attempts'
 
     pocket-tts-offline-cache-windows:
         name: Pocket TTS cached French WAV without network
@@ -260,6 +320,13 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+            # The French weights come from Hugging Face, and the shared
+            # runner address is occasionally rate limited. One cache entry
+            # is shared by every job that needs them.
+            - uses: actions/cache@v4
+              with:
+                  path: ~/.cache/huggingface
+                  key: pocket-tts-french-1e08e6a2
             # The engine loads the ONNX Runtime at run time, so the job has to
             # install the official CPU-only distribution and point the engine
             # at it. Without this the round trip cannot load the model, which
