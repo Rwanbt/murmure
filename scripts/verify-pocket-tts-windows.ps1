@@ -18,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/verify-pocket-tts-wave.ps1"
 . "$PSScriptRoot/pocket-tts-model-cache.ps1"
 $release = 'v4.0.0'
 $archive = 'pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip'
@@ -106,53 +107,15 @@ if ($GenerateFrench) {
     }
     # Parse real RIFF chunks, not a fixed 44-byte assumption: extra metadata
     # and chunk padding are permitted, but invalid/empty audio is not.
-    $stream = [System.IO.File]::OpenRead($wav)
-    $reader = [System.IO.BinaryReader]::new($stream)
     try {
-        if ($stream.Length -lt 48) { throw 'Generated WAV is too small' }
-        $ascii = [System.Text.Encoding]::ASCII
-        if ($ascii.GetString($reader.ReadBytes(4)) -ne 'RIFF') { throw 'Not a RIFF file' }
-        [void] $reader.ReadUInt32()
-        if ($ascii.GetString($reader.ReadBytes(4)) -ne 'WAVE') { throw 'Not a WAV file' }
-        $channels = 0; $rate = 0; $bits = 0; $format = 0; $dataSize = 0; $nonSilent = $false
-        while ($stream.Position + 8 -le $stream.Length) {
-            $chunk = $ascii.GetString($reader.ReadBytes(4))
-            $size = [long] $reader.ReadUInt32()
-            $start = $stream.Position
-            if ($start + $size -gt $stream.Length) { throw 'WAV chunk exceeds file boundaries' }
-            if ($chunk -eq 'fmt ') {
-                if ($size -lt 16) { throw 'Invalid WAV format chunk' }
-                $format = $reader.ReadUInt16()
-                $channels = $reader.ReadUInt16()
-                $rate = $reader.ReadUInt32()
-                [void] $reader.ReadUInt32()
-                [void] $reader.ReadUInt16()
-                $bits = $reader.ReadUInt16()
-            }
-            if ($chunk -eq 'data') {
-                $dataSize = $size
-                $sample = $reader.ReadBytes([int][Math]::Min(32768, $dataSize))
-                foreach ($b in $sample) {
-                    if ($b -ne 0) { $nonSilent = $true; break }
-                }
-            }
-            $stream.Position = $start + $size + ($size % 2)
-        }
-        if ($format -ne 1 -or $channels -ne 1 -or $rate -ne 24000 -or $bits -ne 16) {
-            throw "Unexpected WAV format (PCM=$format, channels=$channels, Hz=$rate, bits=$bits)"
-        }
-        $seconds = [double] $dataSize / ($rate * $channels * ($bits / 8))
-        if ($seconds -lt 0.5 -or -not $nonSilent) {
-            throw 'WAV is silent or shorter than half a second'
-        }
-        $duration = [string]::Format(
-            [System.Globalization.CultureInfo]::InvariantCulture, '{0:F2}', $seconds)
-        Write-Output (
-            "PASS: French CPU model generated non-silent PCM WAV, duration={0}s, Hz={1}" -f $duration, $rate)
+        $wave = Test-PocketTtsWave -Path $wav -MinimumSeconds 0.5
     } finally {
-        $reader.Dispose()
-        $stream.Dispose()
         Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
     }
+    $duration = [string]::Format(
+        [System.Globalization.CultureInfo]::InvariantCulture, '{0:F2}', $wave.DurationSeconds)
+    Write-Output (
+        "PASS: French CPU model generated non-silent PCM WAV, duration={0}s, Hz={1}, peak={2}" -f
+            $duration, $wave.SampleRate, $wave.PeakAmplitude)
 }
 

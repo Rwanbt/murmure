@@ -16,6 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/verify-pocket-tts-wave.ps1"
 . "$PSScriptRoot/pocket-tts-model-cache.ps1"
 & "$PSScriptRoot/verify-pocket-tts-windows.ps1" -Destination $Destination -GenerateFrench
 if (-not $?) { throw 'The initial online French generation failed' }
@@ -69,19 +70,18 @@ try {
     if (-not (Test-Path -LiteralPath $offlineWav)) {
         throw 'Cached generation produced no WAV'
     }
-    $file = [System.IO.File]::OpenRead($offlineWav)
-    $reader = [System.IO.BinaryReader]::new($file)
+    # The offline output must be real audio, not merely a RIFF header, so the
+    # cached path is held to exactly the same bar as the online generation.
     try {
-        if ($file.Length -lt 2048) { throw 'Offline WAV too small' }
-        $ascii = [System.Text.Encoding]::ASCII
-        if ($ascii.GetString($reader.ReadBytes(4)) -ne 'RIFF') { throw 'Offline file is not RIFF' }
-        [void] $reader.ReadUInt32()
-        if ($ascii.GetString($reader.ReadBytes(4)) -ne 'WAVE') { throw 'Offline file is not WAVE' }
-        Write-Output ("PASS: Cached French Pocket TTS generated a WAV without network access ({0} bytes)" -f $file.Length)
+        $wave = Test-PocketTtsWave -Path $offlineWav -MinimumSeconds 0.5
     } finally {
-        $reader.Dispose()
-        $file.Dispose()
+        Remove-Item -LiteralPath $offlineWav -Force -ErrorAction SilentlyContinue
     }
+    $duration = [string]::Format(
+        [System.Globalization.CultureInfo]::InvariantCulture, '{0:F2}', $wave.DurationSeconds)
+    Write-Output (
+        "PASS: Cached French Pocket TTS generated a WAV without network access (duration={0}s, Hz={1}, peak={2})" -f
+            $duration, $wave.SampleRate, $wave.PeakAmplitude)
 } finally {
     $env:HF_HUB_OFFLINE = $oldOffline
     Restore-PocketTtsModelCache
