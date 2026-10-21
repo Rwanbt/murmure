@@ -19,7 +19,25 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
+# The `common-controls-v6` feature is deliberately left out. It makes the
+# window menu library of the framework import the task dialog of the common
+# controls version 6, which only the side-by-side assembly exports. The
+# application declares that assembly in its own manifest, but a test binary is
+# produced by the test harness of the compiler and carries no manifest at all,
+# so the loader resolves the version 5 of the library, does not find the task
+# dialog, and refuses to start the process before any test runs. Without the
+# feature the library falls back to the message box of the user interface
+# library, which every Windows installation exports.
+tauri = { version = "2", default-features = false, features = [
+    "tray-icon",
+    "image-png",
+    "macos-private-api",
+    "wry",
+    "compression",
+    "dynamic-acl",
+    "x11",
+    "dbus",
+] }
 tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-single-instance = "2"
@@ -34,7 +52,17 @@ futures-util = "0.3"
 flate2 = "1.1"
 tar = "0.4"
 anyhow = "1.0"
-ort = { version = "=2.0.0-rc.11", features = ["download-binaries"] }
+# The ONNX Runtime is loaded at runtime instead of being linked at build
+# time. The prebuilt distribution that the build script downloads on Windows
+# is compiled with the DirectML execution provider, so it drags the DirectX 12
+# libraries into the import table of every binary that links it. The library
+# DirectML.dll needs the entry point D3D12SerializeVersionedRootSignature
+# from d3d12.dll, and a Windows installation whose d3d12.dll does not export
+# it refuses to start the program with STATUS_ENTRYPOINT_NOT_FOUND, even
+# though the speech recognition is a pure CPU workload. The official CPU-only
+# distribution has no DirectX dependency at all, and it is loaded from a
+# verified path instead.
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "tracing", "tls-native", "load-dynamic"] }
 ndarray = "0.17.2"
 regex = "1.12.2"
 thiserror = "2.0.18"

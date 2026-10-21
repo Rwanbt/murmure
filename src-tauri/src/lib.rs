@@ -43,7 +43,7 @@ use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tts::preview::{
     pocket_tts_cancel_install, pocket_tts_clear_model_cache, pocket_tts_install, pocket_tts_models,
     pocket_tts_pause, pocket_tts_preview, pocket_tts_resume, pocket_tts_speak, pocket_tts_status,
-    pocket_tts_stop,
+    pocket_tts_stop, pocket_tts_toggle_pause,
 };
 use wake_word::types::WakeWordState;
 
@@ -163,6 +163,25 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .device_event_filter(DeviceEventFilter::Never)
         .setup(|app| {
+            // The ONNX Runtime is loaded at runtime instead of being linked at
+            // build time, so the engine has to know where it is before it
+            // creates its first session. The path is taken from the resource
+            // directory of the application, which is where the installer puts
+            // it.
+            match crate::engine::onnx_runtime::state(app.handle()) {
+                crate::engine::onnx_runtime::RuntimeState::Ready(path) => {
+                    // The variable is read by the runtime loader when the
+                    // first session is created.
+                    std::env::set_var("ORT_DYLIB_PATH", &path);
+                    info!("The ONNX Runtime is available at {}", path.display());
+                }
+                crate::engine::onnx_runtime::RuntimeState::Missing => {
+                    warn!(
+                        "The ONNX Runtime is not installed, the speech recognition is unavailable."
+                    );
+                }
+            }
+
             let start_hidden =
                 std::env::args().any(|arg| arg == "--autostart" || arg == "--hidden");
             if start_hidden {
@@ -457,6 +476,8 @@ pub fn run() {
             set_cancel_shortcut,
             get_tts_stop_shortcut,
             set_tts_stop_shortcut,
+            get_tts_pause_shortcut,
+            set_tts_pause_shortcut,
             get_tts_read_selection_shortcut,
             set_tts_read_selection_shortcut,
             cancel_recording,
@@ -597,7 +618,8 @@ pub fn run() {
             pocket_tts_cancel_install,
             pocket_tts_pause,
             pocket_tts_resume,
-            pocket_tts_stop
+            pocket_tts_stop,
+            pocket_tts_toggle_pause
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

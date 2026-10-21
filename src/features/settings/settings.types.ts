@@ -46,6 +46,7 @@ export interface ShortcutSettings {
     voice_mode_toggle_shortcut: string;
     cancel_shortcut: string;
     tts_stop_shortcut: string;
+    tts_pause_shortcut: string;
     tts_read_selection_shortcut: string;
 }
 

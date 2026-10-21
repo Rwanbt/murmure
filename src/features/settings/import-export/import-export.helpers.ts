@@ -134,6 +134,7 @@ export const extractShortcuts = (all: AppSettings): ShortcutSettings => {
         voice_mode_toggle_shortcut: all.voice_mode_toggle_shortcut,
         cancel_shortcut: all.cancel_shortcut,
         tts_stop_shortcut: all.tts_stop_shortcut,
+        tts_pause_shortcut: all.tts_pause_shortcut,
         tts_read_selection_shortcut: all.tts_read_selection_shortcut,
     };
 };

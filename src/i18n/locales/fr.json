@@ -739,5 +739,7 @@
     "Cancelling Pocket TTS installation…": "Annulation de l’installation Pocket TTS…",
     "Downloading Pocket TTS": "Téléchargement de Pocket TTS",
     "bytes received": "octets reçus",
-    "Cancel installation": "Annuler l’installation"
+    "Cancel installation": "Annuler l’installation",
+    "Pause or resume speech": "Mettre la voix en pause ou reprendre",
+    "Toggle Pocket TTS pause and resume without changing windows.": "Met en pause ou reprend Pocket TTS sans changer de fenêtre."
 }
