@@ -39,6 +39,12 @@ pub fn cancel_install() -> bool {
     true
 }
 
+/// Whether an installation is currently running. The model cache cleanup
+/// must never overlap with the publication of the verified runtime.
+pub fn install_active() -> bool {
+    INSTALL_ACTIVE.load(Ordering::Acquire)
+}
+
 fn check_cancelled() -> Result<(), String> {
     if CANCEL_REQUESTED.load(Ordering::Acquire) {
         Err("Pocket TTS installation cancelled".to_string())
