@@ -5,7 +5,6 @@ import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from '@/i18n';
 import { ExtensionPageLayout } from '@/features/extensions/extension-page-layout/extension-page-layout';
 import { ExtensionHeader } from '@/features/extensions/extension-header/extension-header';
-import { translateTtsError } from '@/features/extensions/pocket-tts/pocket-tts-errors';
 
 type PreviewState = 'idle' | 'generating' | 'playing' | 'paused' | 'stopped' | 'error';
 
@@ -98,7 +97,7 @@ export const PocketTts = () => {
         void listen<PreviewEvent>('pocket-tts-preview', ({ payload }) => {
             if (cancelled) return;
             setState(payload.state);
-            setDetail(payload.detail ? translateTtsError(payload.detail) : null);
+            setDetail(payload.detail ?? null);
         })
             .then((stop) => {
                 if (cancelled) stop();
@@ -120,7 +119,7 @@ export const PocketTts = () => {
         void listen<string>('pocket-tts-selection-error', ({ payload }) => {
             if (!active) return;
             setState('error');
-            setDetail(translateTtsError(payload));
+            setDetail(payload);
         }).then((fn) => {
             if (active) unlisten = fn;
             else fn();
@@ -139,7 +138,7 @@ export const PocketTts = () => {
             await invoke(command, args);
         } catch (error) {
             setState('error');
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         }
     };
 
@@ -148,7 +147,7 @@ export const PocketTts = () => {
             await invoke('set_tts_model', { model: next });
             setModel(next);
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         }
     };
 
@@ -157,7 +156,7 @@ export const PocketTts = () => {
             await invoke('set_tts_volume', { percent: next });
             setVolume(next);
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         }
     };
 
@@ -183,7 +182,7 @@ export const PocketTts = () => {
                 setDetail(t('Pocket TTS installation has already finished or has not started.'));
             }
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         }
     };
 
@@ -200,7 +199,7 @@ export const PocketTts = () => {
                 setDetail(t('Pocket TTS installed but its integrity check did not pass.'));
             }
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         } finally {
             setInstalling(false);
             setInstallProgress(null);
@@ -216,7 +215,7 @@ export const PocketTts = () => {
             await invoke<boolean>('pocket_tts_clear_model_cache');
             setDetail(t('Murmure Pocket TTS model cache cleared.'));
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         } finally {
             setClearingCache(false);
         }
@@ -228,7 +227,7 @@ export const PocketTts = () => {
             await invoke('set_tts_model_download_approved', { approved });
             setDownloadApproved(approved);
         } catch (error) {
-            setDetail(translateTtsError(String(error)));
+            setDetail(String(error));
         } finally {
             setConsentBusy(false);
         }
@@ -277,14 +276,14 @@ export const PocketTts = () => {
                         onClick={() => void installOfficialRuntime()}
                         data-testid="pocket-tts-install"
                     >
-                        {installing ? t('Installing verified Pocket TTSâ€¦') : t('Install official Pocket TTS for Windows')}
+                        {installing ? t('Installing verified Pocket TTS…') : t('Install official Pocket TTS for Windows')}
                     </button>
                 )}
                 {installing && (
                     <div role="status" aria-live="polite" data-testid="pocket-tts-install-progress" className="space-y-2">
                         <p className="text-sm">
                             {cancelRequested
-                                ? t('Cancelling Pocket TTS installationâ€¦')
+                                ? t('Cancelling Pocket TTS installation…')
                                 : installProgress?.totalBytes
                                     ? `${t('Downloading Pocket TTS')}: ${Math.min(100, Math.round(100 * installProgress.receivedBytes / installProgress.totalBytes))}%`
                                     : `${t('Downloading Pocket TTS')}: ${installProgress?.receivedBytes ?? 0} ${t('bytes received')}`}
@@ -306,7 +305,7 @@ export const PocketTts = () => {
 
                 <div role="status" aria-live="polite" data-testid="pocket-tts-status">
                     {state === 'idle' && t('Ready')}
-                    {state === 'generating' && t('Generating audio on CPUâ€¦')}
+                    {state === 'generating' && t('Generating audio on CPU…')}
                     {state === 'playing' && t('Playing French preview')}
                     {state === 'paused' && t('Paused')}
                     {state === 'stopped' && t('Stopped')}
@@ -334,9 +333,9 @@ export const PocketTts = () => {
                     </label>
                     <p className="text-xs text-muted-foreground">
                         <a className="underline" href="https://huggingface.co/kyutai/pocket-tts-without-voice-cloning" target="_blank" rel="noopener noreferrer">
-                            {t('Kyutai French model â€” CC BY 4.0')}
+                            {t('Kyutai French model — CC BY 4.0')}
                         </a>
-                        {' Â· '}
+                        {' · '}
                         {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
                     </p>
                 </div>
@@ -347,7 +346,7 @@ export const PocketTts = () => {
                     className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
                     data-testid="pocket-tts-clear-cache"
                 >
-                    {clearingCache ? t('Deleting downloaded Pocket TTS modelsâ€¦') : t('Delete downloaded Pocket TTS models')}
+                    {clearingCache ? t('Deleting downloaded Pocket TTS models…') : t('Delete downloaded Pocket TTS models')}
                 </button>
                 <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
                     {t('French speech model')}
@@ -360,8 +359,8 @@ export const PocketTts = () => {
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     data-testid="pocket-tts-model"
                 >
-                    <option value="french">{t('French â€” efficient CPU model')}</option>
-                    <option value="french_24l">{t('French â€” 24 layers (larger experimental model)')}</option>
+                    <option value="french">{t('French — efficient CPU model')}</option>
+                    <option value="french_24l">{t('French — 24 layers (larger experimental model)')}</option>
                 </select>
                 <label htmlFor="pocket-tts-volume" className="block text-sm font-medium">
                     {t('Playback volume')}: {volume}%
@@ -390,13 +389,13 @@ export const PocketTts = () => {
                             return (
                                 <li key={status.id}>
                                     <span className="font-medium">{status.id}</span>
-                                    {' Â· '}
+                                    {' · '}
                                     {status.state === 'ready' && t('Ready, usable offline')}
                                     {status.state === 'in_use' && t('In use')}
                                     {status.state === 'not_installed' && t('Not downloaded yet')}
-                                    {size !== null && ` Â· ${size}`}
-                                    {status.revision !== null && ` Â· ${status.revision.slice(0, 12)}`}
-                                    {' Â· '}
+                                    {size !== null && ` · ${size}`}
+                                    {status.revision !== null && ` · ${status.revision.slice(0, 12)}`}
+                                    {' · '}
                                     {status.license}
                                 </li>
                             );
@@ -414,7 +413,7 @@ export const PocketTts = () => {
                     onChange={(event) => setSpeechText(event.target.value)}
                     className="w-full rounded-md border border-border bg-background p-3 text-sm"
                     data-testid="pocket-tts-text"
-                    placeholder={t('Type a French sentence to read locallyâ€¦')}
+                    placeholder={t('Type a French sentence to read locally…')}
                 />
                 <p className="text-xs text-muted-foreground">
                     {t('Only text you explicitly submit is synthesized. Code blocks and likely credential lines are omitted.')}
