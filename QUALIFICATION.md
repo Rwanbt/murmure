@@ -61,10 +61,10 @@ functional parity is therefore not claimed.**
 | STT — recording, transcription, permissions | PARTIAL | Pre-existing upstream implementation, not re-qualified in this effort. See §4. |
 | TTS — French synthesis | **PROVEN** | CI job `Pocket TTS real French WAV on Windows`, green on PR #40/#41/#42/#46. Local run: `PASS: French CPU model generated non-silent PCM WAV, duration=3.64s, Hz=24000, peak=10268`. |
 | TTS — audio playback | PARTIAL | Rodio playback is implemented and unit-tested; audible output is MANUAL. |
-| TTS — pause / resume / stop | PARTIAL | Implemented and unit-tested (`supervise_generation`, `Player::pause`), **global hotkey for pause/resume is OPEN** — see §4. |
+| TTS — pause / resume / stop | PARTIAL | Implemented and unit-tested (`supervise_generation`, `apply_player_request`, `Player::pause`), the deterministic Rodio transport proof is ported and the real French WAV is decoded by the production decoder in CI. Audible output is MANUAL. |
 | TTS — volume | PROVEN (setting persisted, applied to the player) | `settings.rs`, `pocket-tts.tsx` |
 | TTS — read a selection | PROVEN (code path + unit tests) | `src-tauri/src/tts/selection_windows.rs` |
-| TTS — global shortcuts | PARTIAL | Stop and read-selection are wired (`ShortcutAction::{StopTts, ReadSelectedTts}`); pause/resume is missing. |
+| TTS — global shortcuts | **PROVEN** | Stop, read-selection and the configurable pause/resume toggle (`ctrl+alt+p` by default), with a collision check against the other TTS actions. |
 | TTS — verified runtime installation | **PROVEN** | SHA-256 pinned, atomic publication that cannot overwrite, refusal to replace a tampered binary. |
 | TTS — model download consent | **PROVEN** | Consent is required before any model fetch, checked again inside the worker. The packaged application creates **no** model cache before consent (CI job `Packaged Windows application`). |
 | TTS — download progress and cancellation | PROVEN | Progress events and a cancellation path that never publishes an executable. |
@@ -106,7 +106,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 7 | Generation supervision failure modes | P0 | DONE | `test/pocket-tts-generation-supervision` | #45 | `ee3abab` | 5 deterministic checks | green in CI | — | — | — |
 | 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
 | 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
-| 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
+| 10 | Global pause/resume shortcut | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `661b38f` | 3 deterministic tests + a real-WAV CI job | running | — | the implementation was ported from the orphaned PRs #33, #35 and #36 | — |
 | 11 | STT qualification | P0 | TODO | — | — | — | — | — | not started | — | map the existing engine and cover the mandatory scenarios |
 | 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
 | 13 | Dependency audit | P1 | TODO | — | — | — | — | — | not started | — | — |
@@ -134,8 +134,8 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | Gap | Impact | Why it is still open |
 | --- | --- | --- |
 | The graphical user journey of the packaged application is not automated | The Definition of Done asks for a demonstrated full journey | Driving the Tauri interface needs a visible desktop session; the CI runner is headless. A reproducible protocol is in §6. |
-| The global pause/resume shortcut is missing from the head chain | MV-009 is a P0 issue | The implementation exists in `feat/tts-pause-resume-hotkey` (PR #36), which is **not** an ancestor of the current chain head. |
-| The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | `test/pocket-tts-real-wav-rodio` (PR #35) is not an ancestor of the chain head. |
+| The global pause/resume shortcut is missing from the head chain | MV-009 is a P0 issue | Closed by PR #50, which ports the work of the orphaned PRs #33, #35 and #36 onto the chain. |
+| The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | Closed by PR #50: the real French WAV is decoded by the production Rodio decoder in a CI job that keeps the generated WAV for the same run. |
 | The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Partly closed by PR #48: the catalog, the local state and the offline availability are exposed. The states that need weight integrity or download tracking remain open. |
 | Linux and macOS have no pinned Pocket TTS build | No TTS outside Windows | No official Kyutai release is pinned for those platforms; using an unverified binary is refused by design. |
 | The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | The STT qualification is listed as TODO in §3. |
@@ -208,7 +208,6 @@ that the Definition of Done is not yet met:
 
 - the graphical user journey of the packaged application is not demonstrated
   and is still `BLOCKED` on a desktop session;
-- the global pause/resume shortcut is missing from the chain;
 - the STT path is not re-qualified in this effort;
 - the model lifecycle states are only partly exposed;
 - the dependency audit is not wired into CI.
