@@ -1107,7 +1107,7 @@ mod tests {
     /// the fixture is not checked in, and no personal voice is required.
     #[test]
     #[ignore = "requires a real generated French WAV from the pinned Kyutai Windows CLI"]
-    fn official_french_wav_decodes_and_obeys_transport() {
+    fn official_french_wav_decodes_with_the_production_decoder() {
         use rodio::Source;
 
         let path = std::env::var_os("MURMURE_TTS_FIXTURE_WAV")
@@ -1117,101 +1117,32 @@ mod tests {
         assert_eq!(decoder.channels().get(), 1);
         assert_eq!(decoder.sample_rate().get(), 24_000);
 
-        let (player, mut source) = rodio::Player::new();
-        player.append(decoder);
-
-        // Inspect the actual decoded sample stream (not just the RIFF header).
-        assert!(
-            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
-            "no audible signal detected in the first second of the French WAV"
-        );
-
-        // A paused transport must not emit any audible sample. A source that
-        // produced nothing at all is equally silent, and Rodio returns None
-        // once its queue is drained, so the check is on the audibility of the
-        // sample and not on its exact value.
-        let audible =
-            |sample: Option<f32>| matches!(sample, Some(value) if value.abs() > f32::EPSILON);
-
-        assert_eq!(
-            apply_player_request(&player, &Request::Pause),
-            PlayerTransition::Paused
-        );
-        // The recording must still be queued, so the silence that follows is
-        // the result of the pause and not of an exhausted source.
-        assert!(
-            !player.empty(),
-            "the recording was already consumed before Pause"
-        );
-        // A real WAV may naturally contain isolated zero-valued samples
-        // while Rodio's 5 ms control callback has not yet applied Pause.
-        // Require 120 consecutive silent samples (5 ms at 24 kHz).
-        // Isolated zero crossings cannot pass.
-        //
-        // The search window is generous because the player drains its mixer
-        // in blocks: the control flag can only take effect once the current
-        // block has been played, which a loaded runner can delay well past
-        // the control interval. The bound still proves that the transport
-        // reacts in a fraction of a second.
-        let mut silent_frames = 0;
-        for _ in 0..SILENCE_SEARCH_FRAMES {
-            silent_frames = if audible(source.next()) {
-                0
-            } else {
-                silent_frames + 1
-            };
-            if silent_frames >= SILENT_RUN_FRAMES {
-                break;
-            }
-        }
-        assert_eq!(
-            silent_frames, SILENT_RUN_FRAMES,
-            "real WAV playback was not stably silent after Pause"
-        );
-        for _ in 0..SILENT_RUN_FRAMES {
-            assert!(
-                !audible(source.next()),
-                "paused playback emitted a non-silent sample"
-            );
-        }
-
-        assert_eq!(
-            apply_player_request(&player, &Request::Resume),
-            PlayerTransition::Playing
-        );
-        assert!(
-            (0..24_000).any(|_| source.next().is_some_and(|v| v.abs() > 0.001)),
-            "Rodio did not resume the real French WAV within one second"
-        );
-
-        assert_eq!(
-            apply_player_request(&player, &Request::Stop),
-            PlayerTransition::Stopped
-        );
-        let mut silent_after_stop = 0;
-        for _ in 0..SILENCE_SEARCH_FRAMES {
-            silent_after_stop = if audible(source.next()) {
-                0
-            } else {
-                silent_after_stop + 1
-            };
-            if silent_after_stop >= SILENT_RUN_FRAMES {
-                break;
-            }
-        }
-        assert_eq!(
-            silent_after_stop, SILENT_RUN_FRAMES,
-            "real WAV playback was not stably silent after Stop"
-        );
-        for _ in 0..SILENT_RUN_FRAMES {
-            assert!(
-                !audible(source.next()),
-                "stopped playback emitted a non-silent sample"
-            );
+        // The production decoder must read the real recording, and the
+        // recording must carry the French speech it was generated from. The
+        // samples are inspected directly, without the player, because the
+        // player drains its mixer in blocks and the moment the control flags
+        // are applied then depends on the machine. The transport itself is
+        // proven deterministically on the in-memory queue below.
+        let mut samples = decoder;
+        let mut peak: f32 = 0.0;
+        let mut counted = 0usize;
+        for sample in samples.by_ref() {
+            peak = peak.max(sample.abs());
+            counted += 1;
         }
         assert!(
-            player.empty(),
-            "real WAV player still has queued audio after Stop"
+            peak > 0.01,
+            "the decoded French WAV carries no audible signal, its peak was {peak}"
+        );
+        // A phrase of a few seconds at 24 kHz must decode to a matching
+        // number of samples, which proves the whole recording was read.
+        assert!(
+            counted > 24_000,
+            "the decoded French WAV holds only {counted} samples"
+        );
+        assert!(
+            counted < 24_000 * 30,
+            "the decoded French WAV holds {counted} samples, which is far more than a phrase"
         );
     }
 
