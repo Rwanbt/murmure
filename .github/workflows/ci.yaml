@@ -92,6 +92,9 @@ jobs:
             - name: Validate the Pocket TTS model cache isolation
               shell: pwsh
               run: ./scripts/test-pocket-tts-model-cache.ps1
+            - name: Validate the Pocket TTS WAV structural contract
+              shell: pwsh
+              run: ./scripts/test-pocket-tts-wave-validator.ps1
 
     pocket-tts-french-audio:
         name: Pocket TTS real French WAV on Windows
