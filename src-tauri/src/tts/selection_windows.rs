@@ -2,8 +2,8 @@
 //! No keyboard injection, clipboard access or application focus changes.
 //! Untrusted providers may refuse TextPattern; fail closed without fallback.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 
 use windows::Win32::System::Com::{
@@ -69,13 +69,21 @@ fn capture_selection() -> Result<String, String> {
 
         // Do not read Murmure's own editable text when the intended target has
         // lost focus. Password and offscreen controls are always excluded.
-        if focused.CurrentProcessId().map_err(|_| "Unable to verify selection origin")?
+        if focused
+            .CurrentProcessId()
+            .map_err(|_| "Unable to verify selection origin")?
             == std::process::id() as i32
         {
             return Err("Focus is inside Murmure, not a readable external selection".into());
         }
-        if focused.CurrentIsPassword().map_err(|_| "Unable to check protected content")?.as_bool()
-            || focused.CurrentIsOffscreen().map_err(|_| "Unable to check visible content")?.as_bool()
+        if focused
+            .CurrentIsPassword()
+            .map_err(|_| "Unable to check protected content")?
+            .as_bool()
+            || focused
+                .CurrentIsOffscreen()
+                .map_err(|_| "Unable to check visible content")?
+                .as_bool()
         {
             return Err("Protected or offscreen text cannot be read".into());
         }
@@ -83,20 +91,24 @@ fn capture_selection() -> Result<String, String> {
         let pattern: IUIAutomationTextPattern = focused
             .GetCurrentPatternAs(UIA_TextPatternId)
             .map_err(|_| "The focused application does not expose a text selection")?;
-        let ranges = pattern.GetSelection().map_err(|_| "Cannot access selected text")?;
+        let ranges = pattern
+            .GetSelection()
+            .map_err(|_| "Cannot access selected text")?;
         let len = ranges.Length().map_err(|_| "Cannot enumerate selection")?;
         if len != 1 {
             return Err("Select one contiguous passage to read aloud".into());
         }
 
         // Fetch one extra char to detect truncation before reading/speaking.
-        let text = ranges.GetElement(0)
+        let text = ranges
+            .GetElement(0)
             .and_then(|range| range.GetText((MAX_SELECTED_CHARS + 1) as i32))
             .map_err(|_| "Unable to read selected text")?
             .to_string();
         // A focus change during the COM call invalidates the user's target.
         // Never read a stale selection after the foreground app changes.
-        if !focused.CurrentHasKeyboardFocus()
+        if !focused
+            .CurrentHasKeyboardFocus()
             .map_err(|_| "Unable to confirm selection focus")?
             .as_bool()
         {
@@ -118,7 +130,10 @@ pub fn speak_selection(app: &AppHandle) {
     // respect to Stop, so a Stop cannot interleave between those operations.
     let captured = {
         let generation = SELECTION_GENERATION.lock();
-        if READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+        if READ_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return;
         }
         *generation
@@ -162,15 +177,20 @@ mod tests {
         assert!(dispatch_if_current(&generation, 4, || {
             dispatched.fetch_add(1, AtomicOrdering::SeqCst);
             Ok(())
-        }).is_ok());
+        })
+        .is_ok());
         assert_eq!(dispatched.load(AtomicOrdering::SeqCst), 1);
     }
 
     #[test]
     fn capture_is_not_silently_reentrant() {
         READ_ACTIVE.store(false, Ordering::Release);
-        assert!(READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok());
-        assert!(READ_ACTIVE.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err());
+        assert!(READ_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok());
+        assert!(READ_ACTIVE
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err());
         drop(ReadGuard);
         assert!(!READ_ACTIVE.load(Ordering::Acquire));
     }

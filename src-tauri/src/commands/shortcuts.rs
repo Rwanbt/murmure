@@ -155,7 +155,11 @@ mod tts_shortcut_tests {
             &parse_binding_keys("ctrl+alt+k"),
             &ShortcutAction::StopTts
         ));
-        assert!(!has_tts_shortcut_conflict(&registry, &[], &ShortcutAction::StopTts));
+        assert!(!has_tts_shortcut_conflict(
+            &registry,
+            &[],
+            &ShortcutAction::StopTts
+        ));
         #[cfg(target_os = "windows")]
         {
             assert!(has_tts_shortcut_conflict(
@@ -169,7 +173,6 @@ mod tts_shortcut_tests {
                 &ShortcutAction::ReadSelectedTts
             ));
         }
-
     }
 }
 
@@ -183,10 +186,7 @@ pub fn get_tts_read_selection_shortcut(app: AppHandle) -> Result<String, String>
 }
 
 #[command]
-pub fn set_tts_read_selection_shortcut(
-    app: AppHandle,
-    binding: String,
-) -> Result<String, String> {
+pub fn set_tts_read_selection_shortcut(app: AppHandle, binding: String) -> Result<String, String> {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = (app, binding);

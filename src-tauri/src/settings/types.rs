@@ -53,7 +53,7 @@ pub struct AppSettings {
     pub sound_enabled: bool,
     pub sound_volume: u8,
     pub tts_model: String, // "french" | "french_24l" (allowlisted)
-    pub tts_volume: u8, // 0..100; applied to the next playback
+    pub tts_volume: u8,    // 0..100; applied to the next playback
     pub tts_model_download_approved: bool, // explicit local approval, never migrated from exports
     pub lower_output_while_recording: bool,
     pub output_volume_while_recording: u8,

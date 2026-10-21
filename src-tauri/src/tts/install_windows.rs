@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use futures_util::StreamExt;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
-use serde::Serialize;
 
 const RELEASE_URL: &str = "https://github.com/kyutai-labs/pocket-tts/releases/download/v4.0.0/pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip";
 const ARCHIVE_SHA256: &str = "b3b2faa74703c505e22a7f428c984f69577548c85440c4c9eee0d336797f3cef";
@@ -29,7 +29,9 @@ struct InstallProgress {
 }
 
 pub fn cancel_install() -> bool {
-    let Ok(_guard) = INSTALL_CONTROL.lock() else { return false };
+    let Ok(_guard) = INSTALL_CONTROL.lock() else {
+        return false;
+    };
     if !INSTALL_ACTIVE.load(Ordering::Acquire) || PUBLISHED.load(Ordering::Acquire) {
         return false;
     }
@@ -48,7 +50,8 @@ fn check_cancelled() -> Result<(), String> {
 struct ActiveInstall;
 impl ActiveInstall {
     fn acquire() -> Result<Self, String> {
-        let _guard = INSTALL_CONTROL.lock()
+        let _guard = INSTALL_CONTROL
+            .lock()
             .map_err(|_| "TTS installer state is unavailable".to_string())?;
         INSTALL_ACTIVE
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
@@ -87,7 +90,8 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
         .map_err(|_| "Cannot create the Pocket TTS installation directory".to_string())?;
     if !std::fs::symlink_metadata(directory)
         .map_err(|_| "Cannot inspect the installation directory".to_string())?
-        .file_type().is_dir()
+        .file_type()
+        .is_dir()
     {
         return Err("Pocket TTS installation directory is not a real directory".into());
     }
@@ -101,39 +105,46 @@ fn install_verified_exe(archive_bytes: Vec<u8>, directory: &Path) -> Result<(), 
     let reader = std::io::Cursor::new(archive_bytes);
     let mut archive = zip::ZipArchive::new(reader)
         .map_err(|_| "Pocket TTS release archive is not a valid ZIP".to_string())?;
-    let matching: Vec<usize> = (0..archive.len()).filter(|&i| {
-        archive.by_index(i).is_ok_and(|entry| {
-            entry.is_file() && entry.name().replace('\\', "/")
-                .rsplit('/').next() == Some("pocket-tts.exe")
+    let matching: Vec<usize> = (0..archive.len())
+        .filter(|&i| {
+            archive.by_index(i).is_ok_and(|entry| {
+                entry.is_file()
+                    && entry.name().replace('\\', "/").rsplit('/').next() == Some("pocket-tts.exe")
+            })
         })
-    }).collect();
+        .collect();
     if matching.len() != 1 {
         return Err("Expected exactly one Pocket TTS executable in the release".into());
     }
-    let mut entry = archive.by_index(matching[0])
+    let mut entry = archive
+        .by_index(matching[0])
         .map_err(|_| "Unable to open Pocket TTS executable in archive".to_string())?;
     if entry.size() > MAX_EXE_BYTES {
         return Err("Pocket TTS executable exceeds its size limit".into());
     }
     // Fixed destination basename; never use an entry path supplied by the ZIP.
-    let temporary = PendingFile(directory.join(format!(
-        ".pocket-tts-{}.partial", uuid::Uuid::new_v4()
-    )));
+    let temporary =
+        PendingFile(directory.join(format!(".pocket-tts-{}.partial", uuid::Uuid::new_v4())));
     let mut output = std::fs::OpenOptions::new()
-        .write(true).create_new(true).open(&temporary.0)
+        .write(true)
+        .create_new(true)
+        .open(&temporary.0)
         .map_err(|_| "Unable to stage the Pocket TTS executable".to_string())?;
     let copied = std::io::copy(&mut entry.take(MAX_EXE_BYTES + 1), &mut output)
         .map_err(|_| "Unable to extract Pocket TTS executable".to_string())?;
     if copied > MAX_EXE_BYTES {
         return Err("Extracted Pocket TTS executable exceeds its size limit".into());
     }
-    output.flush().map_err(|_| "Unable to flush Pocket TTS binary".to_string())?;
-    output.sync_all().map_err(|_| "Unable to save Pocket TTS binary".to_string())?;
+    output
+        .flush()
+        .map_err(|_| "Unable to flush Pocket TTS binary".to_string())?;
+    output
+        .sync_all()
+        .map_err(|_| "Unable to save Pocket TTS binary".to_string())?;
     drop(output);
-    super::preview::verify_sidecar(
-        &temporary.0, super::preview::WINDOWS_SIDECAR_SHA256,
-    )?;
-    let _guard = INSTALL_CONTROL.lock()
+    super::preview::verify_sidecar(&temporary.0, super::preview::WINDOWS_SIDECAR_SHA256)?;
+    let _guard = INSTALL_CONTROL
+        .lock()
         .map_err(|_| "TTS installer state is unavailable".to_string())?;
     check_cancelled()?;
     // On Windows std::fs::rename may replace an existing destination.
@@ -152,14 +163,15 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
     if !super::preview::cpu_compatible() {
         return Err("This Pocket TTS binary requires an AVX2 CPU".into());
     }
-    let directory = app.path().app_local_data_dir()
+    let directory = app
+        .path()
+        .app_local_data_dir()
         .map_err(|_| "Unable to locate the application data directory".to_string())?
-        .join("pocket-tts").join("bin");
+        .join("pocket-tts")
+        .join("bin");
     let target = directory.join("pocket-tts.exe");
     if std::fs::symlink_metadata(&target).is_ok() {
-        return super::preview::verify_sidecar(
-            &target, super::preview::WINDOWS_SIDECAR_SHA256,
-        );
+        return super::preview::verify_sidecar(&target, super::preview::WINDOWS_SIDECAR_SHA256);
     }
 
     let client = reqwest::Client::builder()
@@ -174,9 +186,13 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
                 .map_err(|_| "Unable to download the official Pocket TTS release".to_string())?,
             _ = tokio::time::sleep(std::time::Duration::from_millis(150)) => check_cancelled()?,
         }
-    }.error_for_status()
-        .map_err(|_| "The official Pocket TTS release is unavailable".to_string())?;
-    if response.content_length().is_some_and(|n| n > MAX_ARCHIVE_BYTES as u64) {
+    }
+    .error_for_status()
+    .map_err(|_| "The official Pocket TTS release is unavailable".to_string())?;
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_ARCHIVE_BYTES as u64)
+    {
         return Err("Pocket TTS archive is larger than permitted".into());
     }
     let total_bytes = response.content_length();
@@ -197,14 +213,18 @@ pub async fn install(app: AppHandle) -> Result<(), String> {
             return Err("Pocket TTS archive exceeded its download limit".into());
         }
         data.extend_from_slice(&chunk);
-        let _ = app.emit("pocket-tts-install-progress", InstallProgress {
-            received_bytes: data.len(),
-            total_bytes,
-        });
+        let _ = app.emit(
+            "pocket-tts-install-progress",
+            InstallProgress {
+                received_bytes: data.len(),
+                total_bytes,
+            },
+        );
     }
     check_cancelled()?;
     tokio::task::spawn_blocking(move || install_verified_exe(data, &directory))
-        .await.map_err(|_| "Pocket TTS installation worker failed".to_string())?
+        .await
+        .map_err(|_| "Pocket TTS installation worker failed".to_string())?
 }
 
 #[cfg(test)]
@@ -222,19 +242,23 @@ mod tests {
         let filename = std::env::var_os("MURMURE_TTS_OFFICIAL_ARCHIVE")
             .expect("MURMURE_TTS_OFFICIAL_ARCHIVE must be the SHA-256 verified archive");
         let archive = std::fs::read(filename).expect("cannot read official Pocket TTS archive");
-        let directory = std::env::temp_dir()
-            .join(format!("murmure-official-sidecar-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("murmure-official-sidecar-{}", uuid::Uuid::new_v4()));
         install_verified_exe(archive.clone(), &directory)
             .expect("official Pocket TTS archive must install");
         let binary = directory.join("pocket-tts.exe");
         super::super::preview::verify_sidecar(
-            &binary, super::super::preview::WINDOWS_SIDECAR_SHA256,
-        ).expect("installed exe must match the pinned official digest");
+            &binary,
+            super::super::preview::WINDOWS_SIDECAR_SHA256,
+        )
+        .expect("installed exe must match the pinned official digest");
         install_verified_exe(archive.clone(), &directory)
             .expect("reinstalling an already verified binary must be idempotent");
         std::fs::write(&binary, b"tampered").expect("tamper fixture");
-        assert!(install_verified_exe(archive, &directory).is_err(),
-            "installer must never replace an unknown existing binary");
+        assert!(
+            install_verified_exe(archive, &directory).is_err(),
+            "installer must never replace an unknown existing binary"
+        );
         std::fs::remove_dir_all(&directory).expect("cleanup isolated installer fixture");
     }
 
@@ -244,14 +268,21 @@ mod tests {
         let archive_path = std::env::var_os("MURMURE_TTS_OFFICIAL_ARCHIVE")
             .expect("Pinned release fixture is required");
         let bytes = std::fs::read(archive_path).expect("Unable to read pinned release");
-        let directory = std::env::temp_dir()
-            .join(format!("murmure-cancel-install-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("murmure-cancel-install-{}", uuid::Uuid::new_v4()));
         let guard = ActiveInstall::acquire().expect("installer must be idle");
-        assert!(cancel_install(), "active installation must accept cancellation");
-        assert!(install_verified_exe(bytes, &directory).is_err(),
-            "cancelled installation unexpectedly succeeded");
-        assert!(!directory.join("pocket-tts.exe").exists(),
-            "cancelled download published an executable");
+        assert!(
+            cancel_install(),
+            "active installation must accept cancellation"
+        );
+        assert!(
+            install_verified_exe(bytes, &directory).is_err(),
+            "cancelled installation unexpectedly succeeded"
+        );
+        assert!(
+            !directory.join("pocket-tts.exe").exists(),
+            "cancelled download published an executable"
+        );
         if directory.exists() {
             let remaining = std::fs::read_dir(&directory).unwrap().count();
             assert_eq!(remaining, 0, "cancelled install left staging files");
@@ -262,23 +293,28 @@ mod tests {
 
     #[test]
     fn rejected_archive_never_creates_a_sidecar_or_staging_files() {
-        let directory = std::env::temp_dir()
-            .join(format!("murmure-tts-invalid-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("murmure-tts-invalid-{}", uuid::Uuid::new_v4()));
         assert!(install_verified_exe(b"not a verified release".to_vec(), &directory).is_err());
-        assert!(!directory.exists(), "invalid archive unexpectedly created the installation directory");
+        assert!(
+            !directory.exists(),
+            "invalid archive unexpectedly created the installation directory"
+        );
     }
 
     #[test]
     fn publishing_verified_binary_never_overwrites_an_existing_target() {
-        let directory = std::env::temp_dir()
-            .join(format!("murmure-tts-link-{}", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("murmure-tts-link-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
         let staged = directory.join("staged.partial");
         let target = directory.join("pocket-tts.exe");
         std::fs::write(&staged, b"verified-for-test").unwrap();
         std::fs::write(&target, b"preexisting-file").unwrap();
-        assert!(std::fs::hard_link(&staged, &target).is_err(),
-            "publishing unexpectedly replaced a preexisting target");
+        assert!(
+            std::fs::hard_link(&staged, &target).is_err(),
+            "publishing unexpectedly replaced a preexisting target"
+        );
         assert_eq!(std::fs::read(&target).unwrap(), b"preexisting-file");
         std::fs::remove_file(&target).unwrap();
         std::fs::hard_link(&staged, &target).expect("publish into empty destination");

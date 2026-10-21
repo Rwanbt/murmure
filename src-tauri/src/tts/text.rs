@@ -16,10 +16,24 @@ pub enum SpeechTextError {
 fn sensitive_line(line: &str) -> bool {
     let lowered = line.trim().to_ascii_lowercase();
     const MARKERS: &[&str] = &[
-        "authorization:", "bearer ", "password=", "password:",
-        "passwd=", "api_key", "api-key", "secret=", "secret:",
-        "access_token", "refresh_token", "token=", "token:",
-        "-----begin ", "sk-", "ghp_", "github_pat_", "npm_",
+        "authorization:",
+        "bearer ",
+        "password=",
+        "password:",
+        "passwd=",
+        "api_key",
+        "api-key",
+        "secret=",
+        "secret:",
+        "access_token",
+        "refresh_token",
+        "token=",
+        "token:",
+        "-----begin ",
+        "sk-",
+        "ghp_",
+        "github_pat_",
+        "npm_",
     ];
     MARKERS.iter().any(|marker| lowered.contains(marker))
 }
@@ -114,9 +128,8 @@ pub fn prepare_speech(input: &str) -> Result<Vec<String>, SpeechTextError> {
         }
 
         // Markdown decorations are never passed as raw binary audio commands.
-        let plain = trimmed.trim_start_matches(|c: char| {
-            c == '#' || c == '-' || c == '*' || c == '>' || c == ' '
-        });
+        let plain = trimmed
+            .trim_start_matches(|c: char| c == '#' || c == '-' || c == '*' || c == '>' || c == ' ');
         let plain = strip_inline_code_and_urls(plain);
         if !plain.is_empty() {
             content.push_str(&plain);
@@ -138,15 +151,20 @@ mod tests {
 
     #[test]
     fn keeps_french_accents_and_splits_sentences() {
-        let parts = prepare_speech("Bonjour à toutes et à tous. Ça fonctionne très bien !").unwrap();
-        assert_eq!(parts, vec!["Bonjour à toutes et à tous.", "Ça fonctionne très bien !"]);
+        let parts =
+            prepare_speech("Bonjour à toutes et à tous. Ça fonctionne très bien !").unwrap();
+        assert_eq!(
+            parts,
+            vec!["Bonjour à toutes et à tous.", "Ça fonctionne très bien !"]
+        );
     }
 
     #[test]
     fn omits_code_blocks_and_inline_code() {
         let parts = prepare_speech(
-            "Voici l'analyse.\n```rust\nprintln!(\"secret\");\n```\nLe test `foo()` est validé."
-        ).unwrap();
+            "Voici l'analyse.\n```rust\nprintln!(\"secret\");\n```\nLe test `foo()` est validé.",
+        )
+        .unwrap();
         assert_eq!(parts.join(" "), "Voici l'analyse. Le test est validé.");
     }
 
@@ -163,14 +181,23 @@ mod tests {
 
     #[test]
     fn rejects_only_code_and_credential_content() {
-        assert_eq!(prepare_speech("```\nlet x = 2;\n```"), Err(SpeechTextError::Empty));
-        assert_eq!(prepare_speech("password=secret"), Err(SpeechTextError::Empty));
+        assert_eq!(
+            prepare_speech("```\nlet x = 2;\n```"),
+            Err(SpeechTextError::Empty)
+        );
+        assert_eq!(
+            prepare_speech("password=secret"),
+            Err(SpeechTextError::Empty)
+        );
         assert_eq!(prepare_speech("   "), Err(SpeechTextError::Empty));
     }
 
     #[test]
     fn bounds_length_without_cutting_utf8() {
-        assert_eq!(prepare_speech(&"é".repeat(MAX_INPUT_CHARS + 1)), Err(SpeechTextError::TooLong));
+        assert_eq!(
+            prepare_speech(&"é".repeat(MAX_INPUT_CHARS + 1)),
+            Err(SpeechTextError::TooLong)
+        );
         let parts = prepare_speech(&"é".repeat(600)).unwrap();
         assert!(parts.iter().all(|p| p.chars().count() <= MAX_SEGMENT_CHARS));
         assert_eq!(parts.concat(), "é".repeat(600));
@@ -190,7 +217,8 @@ mod tests {
 
     #[test]
     fn keeps_mismatched_fences_hidden_until_matching_end() {
-        let parts = prepare_speech("Avant.\n```\nsecret but code\n~~~\nstill code\n```\nAprès.").unwrap();
+        let parts =
+            prepare_speech("Avant.\n```\nsecret but code\n~~~\nstill code\n```\nAprès.").unwrap();
         assert_eq!(parts, vec!["Avant.", "Après."]);
     }
 }
