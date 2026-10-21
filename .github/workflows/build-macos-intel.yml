@@ -57,6 +57,16 @@ jobs:
               with:
                   workspaces: './src-tauri -> target'
 
+            # The ONNX Runtime build script downloads a prebuilt binary that
+            # the rust cache does not cover. A transient network failure in
+            # that download would otherwise fail the mandatory compile gate.
+            - name: Cache the ONNX Runtime prebuilt binaries
+              uses: actions/cache@v4
+              with:
+                  path: ~/Library/Caches/ort.pyke.io
+                  key: ort-pyke-${{ hashFiles('src-tauri/Cargo.lock') }}
+                  restore-keys: ort-pyke-
+
             - name: Install pnpm
               run: arch -x86_64 npm install -g pnpm@10.19.0 --ignore-scripts
 

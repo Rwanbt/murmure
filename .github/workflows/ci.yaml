@@ -20,6 +20,12 @@ jobs:
               with:
                   workspaces: './src-tauri -> target'
 
+            - name: Validate the workflow definitions
+              shell: bash
+              run: |
+                  python3 -m pip install --quiet --disable-pip-version-check pyyaml
+                  python3 scripts/validate-workflows.py
+
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
 
