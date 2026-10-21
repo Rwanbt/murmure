@@ -73,7 +73,7 @@ functional parity is therefore not claimed.**
 | Installer | **PROVEN** | Real NSIS bundle built, installed silently for the current user, launched, and uninstalled in CI. |
 | Uninstaller safety | **PROVEN** | Unrelated user data in `%LOCALAPPDATA%` survives the uninstall; the CI job asserts it. |
 | UX / accessibility | PARTIAL | ARIA live regions, `role="alert"`, labelled controls, explicit disabled states are implemented. A formal WCAG 2.2 AA audit is OPEN. |
-| Model lifecycle states | OPEN | The full state machine (`not_installed` … `removing`) is not exposed yet; only the runtime status is. |
+| Model lifecycle states | PARTIAL | The catalog with the exact repository, license and directory, plus the local state (`not_installed`, `ready`, `in_use`) and the offline availability are exposed and rendered (PR #48). The states that require weight integrity or download tracking are not claimed yet. |
 | Performance | PARTIAL | A 3.64 s French sentence is synthesised on the CI CPU in about 5 s. No performance budget is enforced. |
 
 ### 2.3 Security
@@ -105,11 +105,12 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 6 | Cache never deletes the runtime | P0 | DONE | `fix/tts-model-cache-preserves-runtime` | #44 | `4553cf8` | 6 deterministic checks | green in CI | — | — | — |
 | 7 | Generation supervision failure modes | P0 | DONE | `test/pocket-tts-generation-supervision` | #45 | `ee3abab` | 5 deterministic checks | green in CI | — | — | — |
 | 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
-| 9 | Model lifecycle states | P0 | TODO | — | — | — | — | — | not started | — | expose a model status command and surface it in the extension |
+| 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
 | 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
 | 11 | STT qualification | P0 | TODO | — | — | — | — | — | not started | — | map the existing engine and cover the mandatory scenarios |
 | 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
 | 13 | Dependency audit | P1 | TODO | — | — | — | — | — | not started | — | — |
+| 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `9e6ef81` | — | this document | — | — | — |
 
 ### 3.1 Defects found and fixed
 
@@ -135,7 +136,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | The graphical user journey of the packaged application is not automated | The Definition of Done asks for a demonstrated full journey | Driving the Tauri interface needs a visible desktop session; the CI runner is headless. A reproducible protocol is in §6. |
 | The global pause/resume shortcut is missing from the head chain | MV-009 is a P0 issue | The implementation exists in `feat/tts-pause-resume-hotkey` (PR #36), which is **not** an ancestor of the current chain head. |
 | The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | `test/pocket-tts-real-wav-rodio` (PR #35) is not an ancestor of the chain head. |
-| The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Not started. |
+| The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Partly closed by PR #48: the catalog, the local state and the offline availability are exposed. The states that need weight integrity or download tracking remain open. |
 | Linux and macOS have no pinned Pocket TTS build | No TTS outside Windows | No official Kyutai release is pinned for those platforms; using an unverified binary is refused by design. |
 | The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | The STT qualification is listed as TODO in §3. |
 | No dependency audit runs in CI | Known dependency vulnerabilities may go unnoticed | `cargo audit` / `osv-scanner` are not wired. |
@@ -209,7 +210,7 @@ that the Definition of Done is not yet met:
   and is still `BLOCKED` on a desktop session;
 - the global pause/resume shortcut is missing from the chain;
 - the STT path is not re-qualified in this effort;
-- the model lifecycle states are not exposed;
+- the model lifecycle states are only partly exposed;
 - the dependency audit is not wired into CI.
 
 The verdict can move to **CONDITIONAL GO** once the manual protocol in §6

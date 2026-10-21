@@ -71,6 +71,10 @@ jobs:
             - name: Install frontend deps
               run: pnpm install --ignore-scripts
 
+            - name: Type check
+              shell: bash
+              run: pnpm exec tsc --noEmit
+
             - name: Build SmartMic frontend
               run: pnpm build:smartmic
 
