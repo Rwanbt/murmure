@@ -122,6 +122,24 @@ pub fn pocket_tts_status(app: AppHandle) -> PocketTtsRuntimeStatus {
     }
 }
 
+/// Root of everything Murmure owns for Pocket TTS under the app cache.
+///
+/// On Windows the Tauri cache root and the local data root are the same
+/// directory, so the model cache must live in its own child directory:
+/// clearing the models must never destroy the installed runtime, which is
+/// kept in the sibling `bin` directory.
+fn pocket_tts_root(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_cache_dir()
+        .map_err(|_| "Unable to locate Murmure's model cache".to_string())
+        .map(|root| root.join("pocket-tts"))
+}
+
+/// The Hugging Face model cache owned by Murmure, never the shared user cache.
+fn pocket_tts_model_cache(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(pocket_tts_root(app)?.join("models"))
+}
+
 fn locate_sidecar(app: &AppHandle) -> Result<PathBuf, String> {
     // Prefer the app's dedicated user-local install directory (never PATH).
     #[cfg(target_os = "windows")]
@@ -253,11 +271,7 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     };
     // The first, user-approved invocation may download the public model.
     // Restrict the CLI to a dedicated app cache with no inherited HF login.
-    let cache_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|_| "Unable to locate Murmure's model cache".to_string())?
-        .join("pocket-tts");
+    let cache_dir = pocket_tts_model_cache(app)?;
     std::fs::create_dir_all(&cache_dir)
         .map_err(|_| "Unable to create the local TTS model cache".to_string())?;
     let mut command = Command::new(binary);
@@ -430,7 +444,8 @@ fn send(app: &AppHandle, action: Request) -> Result<(), String> {
     Ok(())
 }
 
-/// Remove only Murmure's isolated Pocket TTS cache, never the user's shared HF cache.
+/// Remove only Murmure's isolated Pocket TTS model cache, never the user's
+/// shared HF cache and never the installed runtime.
 #[tauri::command]
 pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
     let _guard = MODEL_APPROVAL_LOCK
@@ -443,28 +458,91 @@ pub fn pocket_tts_clear_model_cache(app: AppHandle) -> Result<bool, String> {
     {
         return Err("Stop Pocket TTS playback before clearing its model cache".into());
     }
-    let parent = app
-        .path()
-        .app_cache_dir()
-        .map_err(|_| "Unable to locate Murmure's model cache".to_string())?;
-    clear_owned_model_cache(&parent)
+    // A running installation publishes the verified runtime into the same
+    // Pocket TTS root, so it must never overlap with a cleanup.
+    if install_active() {
+        return Err(
+            "Wait for the Pocket TTS installation to finish before clearing its model cache".into(),
+        );
+    }
+    let root = pocket_tts_root(&app)?;
+    clear_owned_model_cache(&root)
 }
 
-/// Operate only on the fixed app-owned child path. Never traverse a symlink
-/// placed at the cache root, including links to shared Hugging Face data.
-fn clear_owned_model_cache(parent: &Path) -> Result<bool, String> {
-    let cache = parent.join("pocket-tts");
-    let meta = match std::fs::symlink_metadata(&cache) {
-        Ok(meta) => meta,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+/// Legacy Hugging Face folders written by earlier versions directly into the
+/// Pocket TTS root. They are unambiguous model artifacts and never the
+/// installed runtime, which lives in the sibling `bin` directory.
+const LEGACY_MODEL_FOLDERS: [&str; 5] = ["hub", "modules", "xet", "datasets", "assets"];
+
+/// Remove the model directories Murmure owns and nothing else.
+///
+/// The installed runtime lives in the sibling `bin` directory and is never
+/// a deletion candidate, so clearing the models can never break a verified
+/// installation.
+fn clear_owned_model_cache(root: &Path) -> Result<bool, String> {
+    let mut targets = vec![root.join("models")];
+    for legacy in LEGACY_MODEL_FOLDERS {
+        targets.push(root.join(legacy));
+    }
+    // Validate every target before removing anything, so a hostile entry
+    // cannot make the cleanup delete part of the cache and then fail.
+    for target in &targets {
+        check_removable_directory(target)?;
+    }
+    let mut removed = false;
+    for target in &targets {
+        if std::fs::symlink_metadata(target).is_ok() {
+            std::fs::remove_dir_all(target)
+                .map_err(|_| "Unable to clear the Pocket TTS model cache".to_string())?;
+            removed = true;
+        }
+    }
+    Ok(removed)
+}
+
+/// Prove that a path is a plain directory that Murmure may remove.
+///
+/// A symbolic link, a Windows junction or any other reparse point could
+/// redirect the deletion outside the Murmure cache, so those are refused.
+fn check_removable_directory(path: &Path) -> Result<(), String> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(_) => return Err("Unable to inspect the Pocket TTS model cache".into()),
     };
-    if !meta.file_type().is_dir() || meta.file_type().is_symlink() {
+    if !metadata.file_type().is_dir()
+        || metadata.file_type().is_symlink()
+        || is_reparse_point(&metadata)
+    {
         return Err("Pocket TTS model cache is not a regular directory".into());
     }
-    std::fs::remove_dir_all(&cache)
-        .map_err(|_| "Unable to clear the Pocket TTS model cache".to_string())?;
-    Ok(true)
+    Ok(())
+}
+
+/// Windows marks junctions and mount points as reparse points. Rust reports
+/// them as ordinary directories, so the attribute has to be checked directly.
+#[cfg(windows)]
+fn is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(windows))]
+fn is_reparse_point(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
+/// Whether a verified runtime installation is currently running.
+fn install_active() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        super::install_windows::install_active()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }
 
 #[tauri::command]
@@ -514,13 +592,13 @@ mod tests {
             std::env::temp_dir().join(format!("murmure-cache-test-{}", uuid::Uuid::new_v4()));
         let owned = root.join("pocket-tts");
         let sibling = root.join("other-app");
-        std::fs::create_dir_all(&owned).unwrap();
+        std::fs::create_dir_all(owned.join("models")).unwrap();
         std::fs::create_dir_all(&sibling).unwrap();
-        std::fs::write(owned.join("model.bin"), b"model").unwrap();
+        std::fs::write(owned.join("models").join("model.bin"), b"model").unwrap();
         std::fs::write(sibling.join("important.bin"), b"keep").unwrap();
-        assert_eq!(clear_owned_model_cache(&root).unwrap(), true);
-        assert!(!owned.exists());
-        assert_eq!(clear_owned_model_cache(&root).unwrap(), false);
+        assert_eq!(clear_owned_model_cache(&owned).unwrap(), true);
+        assert!(!owned.join("models").exists());
+        assert_eq!(clear_owned_model_cache(&owned).unwrap(), false);
         assert_eq!(
             std::fs::read(sibling.join("important.bin")).unwrap(),
             b"keep"
@@ -528,17 +606,95 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    /// Regression: the Pocket TTS runtime and the model cache used to share
+    /// the same directory on Windows, so clearing the models deleted the
+    /// installed, verified runtime and forced a new download.
+    #[test]
+    fn clearing_the_model_cache_never_removes_the_installed_runtime() {
+        let root =
+            std::env::temp_dir().join(format!("murmure-runtime-test-{}", uuid::Uuid::new_v4()));
+        let runtime = root.join("bin").join("pocket-tts.exe");
+        std::fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(root.join("models").join("hub")).unwrap();
+        std::fs::write(&runtime, b"verified-runtime").unwrap();
+        std::fs::write(root.join("models").join("hub").join("model.bin"), b"model").unwrap();
+
+        assert_eq!(clear_owned_model_cache(&root).unwrap(), true);
+        assert!(
+            !root.join("models").join("hub").join("model.bin").exists(),
+            "the model cache must be removed"
+        );
+        assert!(
+            runtime.exists(),
+            "clearing the model cache must never delete the installed runtime"
+        );
+        assert_eq!(std::fs::read(&runtime).unwrap(), b"verified-runtime");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clearing_the_model_cache_removes_the_legacy_huggingface_folders() {
+        let root =
+            std::env::temp_dir().join(format!("murmure-legacy-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("hub")).unwrap();
+        std::fs::create_dir_all(root.join("modules")).unwrap();
+        std::fs::write(root.join("hub").join("blob.bin"), b"blob").unwrap();
+        assert_eq!(clear_owned_model_cache(&root).unwrap(), true);
+        assert!(!root.join("hub").exists());
+        assert!(!root.join("modules").exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clearing_the_model_cache_is_a_no_op_when_no_cache_exists() {
+        let root =
+            std::env::temp_dir().join(format!("murmure-empty-test-{}", uuid::Uuid::new_v4()));
+        assert_eq!(clear_owned_model_cache(&root).unwrap(), false);
+        assert!(!root.exists());
+    }
+
     #[cfg(unix)]
     #[test]
-    fn clearing_cache_refuses_root_symlink() {
+    fn clearing_the_model_cache_refuses_a_symlinked_model_root() {
         use std::os::unix::fs::symlink;
         let root = std::env::temp_dir().join(format!("murmure-link-test-{}", uuid::Uuid::new_v4()));
         let shared = root.join("shared");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("keep.bin"), b"keep").unwrap();
-        symlink(&shared, root.join("pocket-tts")).unwrap();
+        symlink(&shared, root.join("models")).unwrap();
         assert!(clear_owned_model_cache(&root).is_err());
         assert_eq!(std::fs::read(shared.join("keep.bin")).unwrap(), b"keep");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A Windows junction is reported by Rust as an ordinary directory, so the
+    /// reparse attribute has to be inspected explicitly.
+    #[cfg(windows)]
+    #[test]
+    fn clearing_the_model_cache_refuses_a_junction_at_the_model_root() {
+        let root =
+            std::env::temp_dir().join(format!("murmure-junction-test-{}", uuid::Uuid::new_v4()));
+        let shared = root.join("shared");
+        let models = root.join("models");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::fs::write(shared.join("keep.bin"), b"keep").unwrap();
+        let created = std::process::Command::new("cmd")
+            .args([
+                "/c",
+                "mklink",
+                "/J",
+                models.to_str().unwrap(),
+                shared.to_str().unwrap(),
+            ])
+            .status()
+            .unwrap();
+        assert!(created.success(), "creating the junction must succeed");
+        assert!(
+            clear_owned_model_cache(&root).is_err(),
+            "a junction at the model root must be refused"
+        );
+        assert_eq!(std::fs::read(shared.join("keep.bin")).unwrap(), b"keep");
+        let _ = std::fs::remove_dir(&models);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -547,10 +703,10 @@ mod tests {
     fn clearing_cache_refuses_root_file() {
         let root = std::env::temp_dir().join(format!("murmure-file-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(root.join("pocket-tts"), b"not a cache directory").unwrap();
+        std::fs::write(root.join("models"), b"not a cache directory").unwrap();
         assert!(clear_owned_model_cache(&root).is_err());
         assert_eq!(
-            std::fs::read(root.join("pocket-tts")).unwrap(),
+            std::fs::read(root.join("models")).unwrap(),
             b"not a cache directory"
         );
         std::fs::remove_dir_all(root).unwrap();

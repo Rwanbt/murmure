@@ -40,6 +40,16 @@ jobs:
               with:
                   workspaces: './src-tauri -> target'
 
+            # The ONNX Runtime build script downloads a prebuilt binary that
+            # the rust cache does not cover. A transient network failure in
+            # that download would otherwise fail the mandatory compile gate.
+            - name: Cache the ONNX Runtime prebuilt binaries
+              uses: actions/cache@v4
+              with:
+                  path: ~/AppData/Local/ort.pyke.io
+                  key: ort-pyke-${{ hashFiles('src-tauri/Cargo.lock') }}
+                  restore-keys: ort-pyke-
+
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
               shell: pwsh
@@ -75,6 +85,8 @@ jobs:
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --lib tts::selection_windows::tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows selection unit tests failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows Pocket TTS preview unit tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib commands::shortcuts::tts_shortcut_tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut unit tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib shortcuts::registry::tests
