@@ -16,15 +16,18 @@ this report is the summary and the verdict.
 | Deterministic negative tests for the audio contract | **11 checks**, generated fixtures, no network | `scripts/test-pocket-tts-wave-posix.py`, `scripts/test-pocket-tts-wave-validator.ps1` |
 | Offline scenario | **Demonstrated** | "Pocket TTS cached French WAV without network" job |
 | Verified runtime installation | **Demonstrated**, digest checked before and after extraction, atomic publication | `src-tauri/src/tts/install_windows.rs`, `install_posix.rs` |
-| Packaged Windows application | **Built, installed, launched, uninstalled, no orphan process, no temporary file** | `scripts/validate-packaged-windows.ps1`, "Packaged Windows application" job — run `39584806493` is green on all sixteen jobs |
+| Packaged Windows application | **Built, installed, launched, uninstalled on a real desktop**, no orphan process, no temporary file, no leftover shortcut, user settings preserved | "Packaged Windows application" job `119192646518`, run `39591303205`; the same cycle repeated by hand on the project owner's machine (§6.0 of `QUALIFICATION.md`) |
 | Safe cache removal | **Demonstrated**, junction/reparse refused, runtime never deleted | `src-tauri/src/tts/preview.rs`, 6 tests |
 | Rust dependency audit | **Enforced**, 8 advisories accepted with a written reason | "Dependency audit" job |
 | JavaScript dependency audit | **Enforced**, 5 advisories found, 3 closed, 2 accepted with a written reason | `scripts/audit-js-dependencies.py`, job `39584806493` |
 | Contrast measured | **9 pairs**, all above their WCAG 2.2 threshold | `scripts/check-contrast.py` |
 | Screen structure audit | **133 screens**, 0 finding | `scripts/audit-accessibility.py` |
-| Rust unit tests | **410 registered, 405 passed, 5 ignored with a stated reason** | `cargo test --lib` |
+| Rust unit tests | **410 registered, 405 passed, 5 ignored** — and each ignored test is executed by a named job, listed in `QUALIFICATION.md` §3.2 | `cargo test --lib` |
 | TypeScript and lint | **Clean** | `tsc --noEmit` exit 0, `eslint --max-warnings 0` exit 0 |
 | STT round trip with the real model | **PROVEN**, after two defects were removed. It now reports `1 passed; 0 failed; 404 filtered out`, transcribes `"bonjour ceci est un essai de synthese vocale locale"`, loads the engine in 2.27 s and transcribes 3.64 s of audio in 0.83 s (real time factor 0.228) | job "Pocket TTS to Parakeet French round trip" `119192646552`, run `39591303205` at `5f5b474`. Before that: `running 0 tests; 404 filtered out` in run `39587708682`, then `The ONNX Runtime is not installed` in run `39589886791` |
+| Fourth French recording, generated on the project owner's machine | **PROVEN**: 3.64 s, 24 000 Hz, peak 10 268, from the digest-checked official runtime | `scripts/verify-pocket-tts-windows.ps1 -GenerateFrench -KeepGeneratedWav` |
+| The recorder meets a real microphone | **PROVEN** for the capture path and the engine: 8.99 s captured, peak 24.4 % of full scale, transcribed as `"en moche chris est dans lessai de chante du local local"` after travelling through the air | `QUALIFICATION.md` §6.1.1 |
+| Silence produces no words | **PROVEN**: a five second capture of room noise (peak 2.2 % of full scale) returns an empty transcription, in CI and locally | `real_silence_is_not_transcribed`, job `119199531784` |
 
 ## 2. Defects found and fixed
 

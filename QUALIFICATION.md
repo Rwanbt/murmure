@@ -212,6 +212,25 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 
 ---
 
+### 3.2 The five ignored tests and where each one runs
+
+A test that carries `#[ignore]` and never runs anywhere is the same false
+comfort as a green job that runs nothing. Each of the five is therefore
+listed with its reason and the job that actually executes it.
+
+| Test | Why it is ignored | Job that runs it |
+| --- | --- | --- |
+| `real_french_speech_is_transcribed` | Needs the 640 MB pinned Parakeet model and a real recording | `Pocket TTS to Parakeet French round trip` |
+| `real_silence_is_not_transcribed` | Same model, plus a recording that holds no speech | Same job, immediately after |
+| `official_archive_extracts_untampered_binary_and_refuses_overwrite` | Needs the official Kyutai ZIP, 7.5 MB, downloaded and digest-checked | The same job also downloads that archive, so it hands the bytes over |
+| `cancelled_install_never_publishes_an_executable` | Same archive | Same job, on one thread, because both share a process wide install guard |
+| `official_french_wav_decodes_with_the_production_decoder` | Needs a real WAV produced by the official Windows CLI | `Pocket TTS real French WAV decoded by Rodio` |
+
+Until `caf5b75` the two installer tests had a reason and no runner: no job
+ever set `MURMURE_TTS_OFFICIAL_ARCHIVE`, so they were never executed
+anywhere. They ran for the first time on the project owner's machine against
+the real archive (`2 passed`) before being wired into the job.
+
 ## 4. Known gaps and risks
 
 | Gap | Impact | Why it is still open |
