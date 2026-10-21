@@ -285,6 +285,43 @@ jobs:
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
                   }
 
+    # The frontend tree was never audited, so a vulnerable transitive package
+    # could ship unnoticed. The lock file is the only honest source: it holds
+    # the versions the build installs, not the ranges the project asks for.
+    # osv.dev is the open database of the Open Source Security Foundation, so
+    # the check needs no account and anyone can reproduce it.
+    #
+    # The two advisories that are accepted are listed below with the reason
+    # neither can be closed today, and any advisory that is not listed fails
+    # the job.
+    #
+    #   GHSA-vfj7-8cjw-p6xm  braces: no patched release exists. The stack
+    #       exhaustion needs an attacker-controlled glob pattern, and every
+    #       pattern used here comes from the build configuration of this
+    #       repository, never from user input. Development tooling only.
+    #   GHSA-238p-pmpm-9mq7  katex: arrives through the component library
+    #       and its mermaid and rehype-katex consumers, which pin
+    #       `katex@^0.16` and would have to widen their range first. The
+    #       advisory needs TeX rendered with the `trust` option, and the
+    #       application renders no user-supplied TeX.
+    dependency-audit-javascript:
+        name: JavaScript dependency audit
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: '3.x'
+            - name: Install the YAML reader the lock file needs
+              run: python3 -m pip install --quiet pyyaml
+            - name: Check the JavaScript dependencies against the OSV database
+              run: |
+                  python3 scripts/audit-js-dependencies.py \
+                      --lock pnpm-lock.yaml \
+                      --allow GHSA-vfj7-8cjw-p6xm,GHSA-238p-pmpm-9mq7
+
     # The RustSec advisory database is checked against the exact lock file, so
     # a vulnerable transitive dependency cannot reach a release unnoticed.
     #
