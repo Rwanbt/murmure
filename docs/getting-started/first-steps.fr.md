@@ -5,7 +5,7 @@ Apres avoir installe Murmure, voici comment en tirer le meilleur parti.
 ## Votre premiere transcription
 
 1. Ouvrez un champ de texte (navigateur, editeur, messagerie)
-2. Appuyez sur `Ctrl+Espace` (raccourci par defaut)
+2. Appuyez sur `Ctrl+Alt+X` (raccourci par defaut)
 3. Parlez clairement dans votre microphone
 4. Relachez le raccourci (ou appuyez a nouveau en mode toggle)
 5. Le texte apparait dans l'application active
@@ -14,7 +14,7 @@ Apres avoir installe Murmure, voici comment en tirer le meilleur parti.
     La premiere transcription apres le lancement est un peu plus lente car le modele IA doit se charger. Les suivantes sont plus rapides.
 
 !!! note "Utilisateurs Linux Wayland"
-    Sous Wayland, `Ctrl+Espace` ne fonctionne pas par defaut. Murmure n'enregistre aucun raccourci global sous Wayland : vous devez binder un raccourci OS personnalise appelant `murmure --transcription` avant cette etape. Voir [Configurer les raccourcis sous Linux](../configure-shortcuts-on-linux.fr.md) pour les instructions pas-a-pas.
+    Sous Wayland, le raccourci par defaut ne fonctionne pas. Murmure n'enregistre aucun raccourci global sous Wayland : vous devez binder un raccourci OS personnalise appelant `murmure --transcription` avant cette etape. Voir [Configurer les raccourcis sous Linux](../configure-shortcuts-on-linux.fr.md) pour les instructions pas-a-pas.
 
 ## Choisir le mode d'enregistrement
 
@@ -43,7 +43,7 @@ Par defaut, Murmure utilise le microphone systeme. Pour en choisir un specifique
 
 ![Raccourcis](../assets/settings-shortcuts.png)
 
-Le raccourci par defaut `Ctrl+Espace` peut entrer en conflit avec d'autres applications. Pour le changer :
+Le raccourci par defaut `Ctrl+Alt+X` peut entrer en conflit avec d'autres applications. Pour le changer :
 
 1. Allez dans **Parametres** > **Raccourcis**
 2. Cliquez sur le champ du raccourci et appuyez sur la combinaison souhaitee
@@ -52,9 +52,9 @@ Le raccourci par defaut `Ctrl+Espace` peut entrer en conflit avec d'autres appli
 
 | OS                  | Recommande                                                                 | A eviter                                       |
 | ------------------- | -------------------------------------------------------------------------- | ---------------------------------------------- |
-| Windows             | `Ctrl+Espace`, `Ctrl+Alt+M`, `F2`, bouton lateral/supplementaire de souris | Combinaisons AltGr (interprete comme Ctrl+Alt) |
-| macOS               | `Ctrl+Option+M`, `F2`, `F3`, bouton lateral/supplementaire de souris       | Espace ou chiffres                             |
-| Linux (X11)         | `Ctrl+Espace`, `F2`, bouton lateral/supplementaire de souris               | -                                              |
+| Windows             | `Ctrl+Alt+X`, `Ctrl+Alt+M`, `F2`, bouton lateral/supplementaire de souris | `Ctrl+Espace` (IME Windows) |
+| macOS               | `Ctrl+Option+X`, `Ctrl+Option+M`, `F2`, `F3`, bouton lateral/supplementaire de souris | Espace ou chiffres |
+| Linux (X11)         | `Ctrl+Alt+X`, `F2`, bouton lateral/supplementaire de souris               | -                                              |
 | Linux (Wayland)     | Configurer un raccourci OS appelant `murmure --transcription` | Voir [Configurer les raccourcis sous Linux](../configure-shortcuts-on-linux.fr.md) |
 
 ## Modes d'insertion du texte

@@ -206,7 +206,7 @@ pub struct ShortcutSettings {
 impl Default for ShortcutSettings {
     fn default() -> Self {
         Self {
-            record_shortcut: "ctrl+space".to_string(),
+            record_shortcut: "ctrl+alt+x".to_string(),
             last_transcript_shortcut: "ctrl+shift+space".to_string(),
             command_shortcut: "ctrl+shift+x".to_string(),
             llm_mode_1_shortcut: "ctrl+shift+1".to_string(),
@@ -218,7 +218,7 @@ impl Default for ShortcutSettings {
             llm_transform_3_shortcut: "ctrl+alt+shift+3".to_string(),
             llm_transform_4_shortcut: "ctrl+alt+shift+4".to_string(),
             voice_mode_toggle_shortcut: "ctrl+shift+0".to_string(),
-            cancel_shortcut: "ctrl+backspace".to_string(),
+            cancel_shortcut: "ctrl+alt+s".to_string(),
         }
     }
 }

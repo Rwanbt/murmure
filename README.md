@@ -22,7 +22,9 @@ Bulgarian (bg), Croatian (hr), Czech (cs), Danish (da), Dutch (nl), English (en)
 ## Usage
 
 Murmure provides a clean and focused speech-to-text experience.
-Once launched, simply start recording your voice. The text appears instantly, processed directly on your computer.
+Press `Ctrl+Alt+X` (the default shortcut) to start dictating and release it to stop. The text appears instantly, processed directly on your computer.
+
+You can change the shortcut in **Settings** > **Shortcuts**.
 
 Typical use cases include:
 

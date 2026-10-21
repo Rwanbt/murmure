@@ -74,9 +74,9 @@ Puis deconnectez-vous et reconnectez-vous. La notification disparaitra et le col
 
 ## AltGr declenche l'enregistrement (Windows)
 
-Sur Windows, `AltGr` est interprete comme `Ctrl+Alt`. Si votre raccourci est `Ctrl+Alt+quelquechose`, AltGr peut le declencher accidentellement.
+Sur Windows, `AltGr` est la touche Alt droite, et l'application ne reconnait que le Ctrl gauche. Appuyer sur AltGr seul ne declenche donc pas un raccourci `Ctrl+Alt+...` : le raccourci par defaut `Ctrl+Alt+X` est sans risque.
 
-**Solution** : Choisissez un raccourci sans `Ctrl+Alt`, ou utilisez une touche de fonction.
+Si un raccourci `Ctrl+Alt+...` se declenche pendant que vous tapez un caractere AltGr, choisissez une touche de fonction.
 
 ## Des caracteres parasites apparaissent (macOS)
 

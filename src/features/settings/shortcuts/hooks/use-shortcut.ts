@@ -66,7 +66,7 @@ export const SHORTCUT_CONFIGS = {
         setCommand: 'set_command_shortcut',
     },
     record: {
-        defaultShortcut: 'ctrl+space',
+        defaultShortcut: 'ctrl+alt+x',
         getCommand: 'get_record_shortcut',
         setCommand: 'set_record_shortcut',
     },
@@ -115,12 +115,12 @@ export const SHORTCUT_CONFIGS = {
         index: 3,
     },
     cancel: {
-        defaultShortcut: 'ctrl+backspace',
+        defaultShortcut: 'ctrl+alt+s',
         getCommand: 'get_cancel_shortcut',
         setCommand: 'set_cancel_shortcut',
     },
     ttsReadSelection: {
-        defaultShortcut: 'ctrl+alt+l',
+        defaultShortcut: 'ctrl+alt+w',
         getCommand: 'get_tts_read_selection_shortcut',
         setCommand: 'set_tts_read_selection_shortcut',
     },
@@ -130,7 +130,7 @@ export const SHORTCUT_CONFIGS = {
         setCommand: 'set_tts_pause_shortcut',
     },
     ttsStop: {
-        defaultShortcut: 'ctrl+alt+k',
+        defaultShortcut: 'ctrl+alt+q',
         getCommand: 'get_tts_stop_shortcut',
         setCommand: 'set_tts_stop_shortcut',
     },

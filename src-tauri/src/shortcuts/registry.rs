@@ -224,12 +224,12 @@ mod tests {
         let s = AppSettings::default();
         let registry = ShortcutRegistry::from_settings(&s);
         let read = find(&registry, &ShortcutAction::ReadSelectedTts).unwrap();
-        assert_eq!(read.keys, parse_binding_keys("ctrl+alt+l"));
+        assert_eq!(read.keys, parse_binding_keys("ctrl+alt+w"));
         assert_eq!(
             find(&registry, &ShortcutAction::StartRecording)
                 .unwrap()
                 .keys,
-            parse_binding_keys("ctrl+space")
+            parse_binding_keys("ctrl+alt+x")
         );
     }
 
@@ -256,9 +256,9 @@ mod tests {
         let s = AppSettings::default();
         let registry = ShortcutRegistry::from_settings(&s);
         let stop = find(&registry, &ShortcutAction::StopTts).unwrap();
-        assert_eq!(stop.keys, parse_binding_keys("ctrl+alt+k"));
+        assert_eq!(stop.keys, parse_binding_keys("ctrl+alt+q"));
         let recording = find(&registry, &ShortcutAction::StartRecording).unwrap();
-        assert_eq!(recording.keys, parse_binding_keys("ctrl+space"));
+        assert_eq!(recording.keys, parse_binding_keys("ctrl+alt+x"));
     }
 
     #[test]

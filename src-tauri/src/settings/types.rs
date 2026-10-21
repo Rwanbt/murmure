@@ -102,7 +102,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            record_shortcut: "ctrl+space".to_string(),
+            record_shortcut: "ctrl+alt+x".to_string(),
             last_transcript_shortcut: "ctrl+shift+space".to_string(),
             command_shortcut: "ctrl+shift+x".to_string(),
             llm_mode_1_shortcut: "ctrl+shift+1".to_string(),
@@ -114,9 +114,9 @@ impl Default for AppSettings {
             llm_transform_3_shortcut: "ctrl+alt+shift+3".to_string(),
             llm_transform_4_shortcut: "ctrl+alt+shift+4".to_string(),
             voice_mode_toggle_shortcut: "ctrl+shift+0".to_string(),
-            tts_stop_shortcut: "ctrl+alt+k".to_string(),
+            tts_stop_shortcut: "ctrl+alt+q".to_string(),
             tts_pause_shortcut: "ctrl+alt+p".to_string(),
-            tts_read_selection_shortcut: "ctrl+alt+l".to_string(),
+            tts_read_selection_shortcut: "ctrl+alt+w".to_string(),
             dictionary: Vec::new(),
             // Wayland CLI mode binds shortcuts at the OS level, so Murmure receives no key-release events. Push-to-talk is impossible.
             record_mode: {
@@ -180,7 +180,7 @@ impl Default for AppSettings {
             lower_output_while_recording: false,
             output_volume_while_recording: 50,
             onboarding: OnboardingState::default(),
-            cancel_shortcut: "ctrl+backspace".to_string(),
+            cancel_shortcut: "ctrl+alt+s".to_string(),
             mic_id: None,
             mic_label: None,
             log_level: "info".to_string(),

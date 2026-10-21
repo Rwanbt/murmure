@@ -5,7 +5,7 @@ After installing Murmure, here's how to get the most out of it.
 ## Your First Transcription
 
 1. Open any text field (a browser, a text editor, a chat app)
-2. Press `Ctrl+Space` (default shortcut)
+2. Press `Ctrl+Alt+X` (default shortcut)
 3. Speak clearly into your microphone
 4. Release the shortcut (or press it again in toggle mode)
 5. Your text appears in the focused application
@@ -14,7 +14,7 @@ After installing Murmure, here's how to get the most out of it.
     The first transcription after launching Murmure is slightly slower because the AI model needs to warm up. Subsequent transcriptions are faster.
 
 !!! note "Linux Wayland users"
-    On Wayland, `Ctrl+Space` does not work out of the box. Murmure does not register global shortcuts on Wayland: you must bind a custom OS shortcut calling `murmure --transcription` before this step. See [Configure shortcuts on Linux](../configure-shortcuts-on-linux.md) for step-by-step instructions.
+    On Wayland, the default shortcut does not work out of the box. Murmure does not register global shortcuts on Wayland: you must bind a custom OS shortcut calling `murmure --transcription` before this step. See [Configure shortcuts on Linux](../configure-shortcuts-on-linux.md) for step-by-step instructions.
 
 ## Choose Your Recording Mode
 
@@ -43,7 +43,7 @@ By default, Murmure uses your system's default microphone. To choose a specific 
 
 ![Shortcuts](../assets/settings-shortcuts.png)
 
-The default shortcut `Ctrl+Space` may conflict with other apps. To change it:
+The default shortcut `Ctrl+Alt+X` may conflict with other apps. To change it:
 
 1. Go to **Settings** > **Shortcuts**
 2. Click the shortcut field and press your preferred key combination
@@ -52,9 +52,9 @@ The default shortcut `Ctrl+Space` may conflict with other apps. To change it:
 
 | OS               | Recommended                                               | Avoid                                  |
 | ---------------- | --------------------------------------------------------- | -------------------------------------- |
-| Windows          | `Ctrl+Space`, `Ctrl+Alt+M`, `F2`, side/extra mouse button | AltGr combos (interpreted as Ctrl+Alt) |
-| macOS            | `Ctrl+Option+M`, `F2`, `F3`, side/extra mouse button      | Anything with Space or numbers         |
-| Linux (X11)      | `Ctrl+Space`, `F2`, side/extra mouse button               | -                                      |
+| Windows          | `Ctrl+Alt+X`, `Ctrl+Alt+M`, `F2`, side/extra mouse button | `Ctrl+Space` (Windows IME), `AltGr+E`/`AltGr+C` (type `€`/`©`) |
+| macOS            | `Ctrl+Option+X`, `Ctrl+Option+M`, `F2`, `F3`, side/extra mouse button | Anything with Space or numbers |
+| Linux (X11)      | `Ctrl+Alt+X`, `F2`, side/extra mouse button               | -                                      |
 | Linux (Wayland)  | Configure a custom OS shortcut calling `murmure --transcription` | See [Configure shortcuts on Linux](../configure-shortcuts-on-linux.md) |
 
 ## Text Insertion Modes

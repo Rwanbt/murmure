@@ -50,7 +50,7 @@ This is a one-time procedure. Future updates will not require this.
 
 ## Recommended Shortcuts
 
-The default shortcut `Ctrl+Space` conflicts with the macOS input source switcher. We recommend changing it to one of:
+The default shortcut is `Ctrl+Option+X`. `Ctrl+Space` conflicts with the macOS input source switcher and will not reach Murmure. If you prefer another combination, use one of:
 
 - `Ctrl+Option+M`
 - `F2`, `F3`, or another function key

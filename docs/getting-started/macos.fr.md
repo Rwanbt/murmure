@@ -50,7 +50,7 @@ C'est une procedure unique. Les futures mises a jour ne le requerront pas.
 
 ## Raccourcis recommandes
 
-Le raccourci par defaut `Ctrl+Espace` entre en conflit avec le changement de source d'entree macOS. Nous recommandons :
+Le raccourci par defaut est `Ctrl+Option+X`. `Ctrl+Espace` entre en conflit avec le changement de source d'entree macOS et n'atteindra pas Murmure. Si vous preferez une autre combinaison :
 
 - `Ctrl+Option+M`
 - `F2`, `F3`, ou une autre touche de fonction

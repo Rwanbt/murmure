@@ -8,7 +8,7 @@
 
 **After upgrading from 1.6.0**: You must completely reset permissions. See the [macOS installation guide](../getting-started/macos.md#upgrading-from-160) for the exact steps.
 
-**System shortcut conflict**: `Ctrl+Space` is used by macOS for switching input sources. Change your Murmure shortcut to something else (e.g., `Ctrl+Option+M`, `F2`).
+**System shortcut conflict**: `Ctrl+Space` is used by macOS for switching input sources and will not reach Murmure. Use another combination (e.g., `Ctrl+Option+M`, `F2`).
 
 **"Failed to save shortcut"**: Another application is already using that shortcut. Try a different combination.
 
@@ -62,7 +62,7 @@ Mouse button shortcuts are supported since v1.8.0. This can be a good alternativ
 
 | OS                  | Recommended                               | Avoid                           |
 | ------------------- | ----------------------------------------- | ------------------------------- |
-| **Windows**         | `Ctrl+Space`, `Ctrl+Alt+M`, `F2`          | AltGr combos (AltGr = Ctrl+Alt) |
-| **macOS**           | `Ctrl+Option+M`, `F2`, `F3`, mouse button | Space, numbers, letters         |
-| **Linux (X11)**     | `Ctrl+Space`, `F2`, `Ctrl+Alt+M`          | -                               |
+| **Windows**         | `Ctrl+Alt+X`, `Ctrl+Alt+M`, `F2`          | `Ctrl+Space` (Windows IME), `AltGr+E`/`AltGr+C` (type `€`/`©`) |
+| **macOS**           | `Ctrl+Option+X`, `Ctrl+Option+M`, `F2`, `F3`, mouse button | Space, numbers |
+| **Linux (X11)**     | `Ctrl+Alt+X`, `F2`, `Ctrl+Alt+M`          | -                               |
 | **Linux (Wayland)** | Bind any combination at OS level via `murmure --transcription`. See Configure shortcuts on Linux. | -                               |

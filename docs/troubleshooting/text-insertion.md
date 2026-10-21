@@ -74,12 +74,12 @@ Then log out and back in. The notification will stop appearing and paste will wo
 
 ## AltGr Triggers Recording (Windows)
 
-On Windows, `AltGr` is interpreted as `Ctrl+Alt`. If your recording shortcut is `Ctrl+Alt+something`, pressing `AltGr` may accidentally trigger recording.
+On Windows, `AltGr` is the right Alt key, and the application only recognises the left Ctrl key. Pressing AltGr alone therefore does not trigger a `Ctrl+Alt+...` shortcut, which is why the default `Ctrl+Alt+X` is safe.
 
-**Fix**: Choose a shortcut that doesn't involve `Ctrl+Alt`, or use a function key.
+If a `Ctrl+Alt+...` shortcut fires while you type an AltGr character, choose a function key instead.
 
 ## Extra Characters Appear (macOS)
 
 On macOS, shortcuts containing `Space` or number keys may "leak" those characters into the active application while held. For example, `Shift+Space` produces multiple space characters.
 
-**Fix**: Use modifier-only combos like `Ctrl+Option+M` or function keys (`F2`, `F3`). Avoid shortcuts containing Space, numbers, or letter keys on macOS.
+**Fix**: Use modifier-only combos like `Ctrl+Option+M` or function keys (`F2`, `F3`). Avoid shortcuts containing Space or number keys on macOS.

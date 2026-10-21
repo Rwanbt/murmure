@@ -8,7 +8,7 @@
 
 **Apres mise a jour depuis 1.6.0** : Reinitialisation complete des permissions necessaire. Voir le [guide d'installation macOS](../getting-started/macos.md#mise-a-jour-depuis-160).
 
-**Conflit raccourci systeme** : `Ctrl+Espace` est utilise par macOS pour le changement de source d'entree. Changez votre raccourci (ex: `Ctrl+Option+M`, `F2`).
+**Conflit raccourci systeme** : `Ctrl+Espace` est utilise par macOS pour le changement de source d'entree et n'atteindra pas Murmure. Utilisez une autre combinaison (ex: `Ctrl+Option+M`, `F2`).
 
 **"Echec de sauvegarde du raccourci"** : Une autre application utilise deja ce raccourci.
 
@@ -50,7 +50,7 @@ Les raccourcis par bouton de souris sont supportes depuis la v1.8.0.
 
 | OS                  | Recommande                                 | A eviter                  |
 | ------------------- | ------------------------------------------ | ------------------------- |
-| **Windows**         | `Ctrl+Espace`, `Ctrl+Alt+M`, `F2`          | AltGr (= Ctrl+Alt)        |
-| **macOS**           | `Ctrl+Option+M`, `F2`, `F3`, bouton souris | Espace, chiffres, lettres |
-| **Linux (X11)**     | `Ctrl+Espace`, `F2`, `Ctrl+Alt+M`          | -                         |
+| **Windows**         | `Ctrl+Alt+X`, `Ctrl+Alt+M`, `F2`           | `Ctrl+Espace` (IME Windows) |
+| **macOS**           | `Ctrl+Option+X`, `Ctrl+Option+M`, `F2`, `F3`, bouton souris | Espace, chiffres |
+| **Linux (X11)**     | `Ctrl+Alt+X`, `F2`, `Ctrl+Alt+M`           | -                         |
 | **Linux (Wayland)** | Bindez la combinaison de votre choix au niveau OS via `murmure --transcription`. Voir Configurer les raccourcis sous Linux. | -                         |

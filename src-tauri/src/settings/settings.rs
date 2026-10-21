@@ -98,9 +98,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_settings_preserve_default_tts_stop_hotkey() {
+    fn legacy_settings_preserve_explicit_shortcuts_and_fill_missing_defaults() {
         let settings = parse_settings(r#"{"record_shortcut":"ctrl+space"}"#);
-        assert_eq!(settings.tts_stop_shortcut, "ctrl+alt+k");
+        assert_eq!(settings.tts_stop_shortcut, "ctrl+alt+q");
         assert_eq!(settings.record_shortcut, "ctrl+space");
     }
 

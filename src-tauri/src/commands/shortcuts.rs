@@ -167,12 +167,12 @@ mod tts_shortcut_tests {
         let registry = ShortcutRegistry::from_settings(&AppSettings::default());
         assert!(has_tts_shortcut_conflict(
             &registry,
-            &parse_binding_keys("ctrl+space"),
+            &parse_binding_keys("ctrl+alt+x"),
             &ShortcutAction::StopTts
         ));
         assert!(!has_tts_shortcut_conflict(
             &registry,
-            &parse_binding_keys("ctrl+alt+k"),
+            &parse_binding_keys("ctrl+alt+q"),
             &ShortcutAction::StopTts
         ));
         assert!(!has_tts_shortcut_conflict(
@@ -182,7 +182,7 @@ mod tts_shortcut_tests {
         ));
         assert!(has_tts_shortcut_conflict(
             &registry,
-            &parse_binding_keys("ctrl+alt+k"),
+            &parse_binding_keys("ctrl+alt+q"),
             &ShortcutAction::TogglePauseTts
         ));
         assert!(!has_tts_shortcut_conflict(
@@ -194,12 +194,12 @@ mod tts_shortcut_tests {
         {
             assert!(has_tts_shortcut_conflict(
                 &registry,
-                &parse_binding_keys("ctrl+alt+k"),
+                &parse_binding_keys("ctrl+alt+q"),
                 &ShortcutAction::ReadSelectedTts
             ));
             assert!(!has_tts_shortcut_conflict(
                 &registry,
-                &parse_binding_keys("ctrl+alt+l"),
+                &parse_binding_keys("ctrl+alt+w"),
                 &ShortcutAction::ReadSelectedTts
             ));
         }
