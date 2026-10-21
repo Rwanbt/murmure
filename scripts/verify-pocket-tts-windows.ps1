@@ -1,9 +1,14 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
   Verify the official Kyutai Pocket TTS Windows CPU executable.
   By default this only validates the CLI. With -GenerateFrench, runs a
   fixed test phrase against the official ungated French model fallback.
   This is a disposable CI diagnostic, NOT a model installer.
+
+  PowerShell 7 is required because the generation step drives the child
+  process through ProcessStartInfo.ArgumentList, which only exists on
+  .NET Core. On Windows PowerShell 5.1 that property is null and the run
+  would abort with an opaque "method call on a null-valued expression".
 #>
 [CmdletBinding()]
 param(
@@ -13,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/pocket-tts-model-cache.ps1"
 $release = 'v4.0.0'
 $archive = 'pocket-tts-3.3.0-x86_64-pc-windows-msvc.zip'
 $expectedSha256 = 'b3b2faa74703c505e22a7f428c984f69577548c85440c4c9eee0d336797f3cef'
@@ -65,6 +71,9 @@ if ($GenerateFrench) {
     # No Hugging Face login or user-supplied credential is required.
     # Fixed test text; never pass personal content through CI.
     $wav = Join-Path $Destination 'french-smoke.wav'
+    # Keep the model download inside this staging folder and never let a
+    # personal Hugging Face login leak into an automated run.
+    $null = Initialize-PocketTtsModelCache -Destination $Destination
     $psi = [System.Diagnostics.ProcessStartInfo]::new($binary)
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
@@ -89,6 +98,7 @@ if ($GenerateFrench) {
         }
     } finally {
         $process.Dispose()
+        Restore-PocketTtsModelCache
     }
 
     if (-not (Test-Path -LiteralPath $wav)) {
@@ -135,7 +145,10 @@ if ($GenerateFrench) {
         if ($seconds -lt 0.5 -or -not $nonSilent) {
             throw 'WAV is silent or shorter than half a second'
         }
-        Write-Output ("PASS: French CPU model generated non-silent PCM WAV, duration={0:N2}s, Hz={1}" -f $seconds, $rate)
+        $duration = [string]::Format(
+            [System.Globalization.CultureInfo]::InvariantCulture, '{0:F2}', $seconds)
+        Write-Output (
+            "PASS: French CPU model generated non-silent PCM WAV, duration={0}s, Hz={1}" -f $duration, $rate)
     } finally {
         $reader.Dispose()
         $stream.Dispose()

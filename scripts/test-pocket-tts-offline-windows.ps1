@@ -1,8 +1,13 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
   Test that a cached public French Pocket TTS model supports synthesis
   after the executable's outbound connections are explicitly denied.
   No personal tokens, private text or audio files are retained.
+
+  PowerShell 7 is required because the generation step drives the child
+  process through ProcessStartInfo.ArgumentList, which only exists on
+  .NET Core. On Windows PowerShell 5.1 that property is null and the run
+  would abort with an opaque "method call on a null-valued expression".
 #>
 [CmdletBinding()]
 param(
@@ -11,6 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot/pocket-tts-model-cache.ps1"
 & "$PSScriptRoot/verify-pocket-tts-windows.ps1" -Destination $Destination -GenerateFrench
 if (-not $?) { throw 'The initial online French generation failed' }
 
@@ -35,6 +41,8 @@ try {
     # The firewall denies any outbound request from the CLI even if the
     # Rust hf-hub client does not honor the Python HF_HUB_OFFLINE flag.
     $env:HF_HUB_OFFLINE = '1'
+    # Reuse the same isolated model cache that the online step populated.
+    $null = Initialize-PocketTtsModelCache -Destination $Destination
     $psi = [System.Diagnostics.ProcessStartInfo]::new($binary)
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
@@ -76,6 +84,7 @@ try {
     }
 } finally {
     $env:HF_HUB_OFFLINE = $oldOffline
+    Restore-PocketTtsModelCache
     if ($ruleCreated) { Remove-NetFirewallRule -Name $ruleName -ErrorAction Stop }
     Remove-Item -LiteralPath $offlineWav -Force -ErrorAction SilentlyContinue
 }

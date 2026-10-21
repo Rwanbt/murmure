@@ -84,6 +84,15 @@ jobs:
               run: |
                   ./scripts/verify-pocket-tts-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-smoke"
 
+    pocket-tts-model-isolation:
+        name: Pocket TTS model cache isolation contract
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - name: Validate the Pocket TTS model cache isolation
+              shell: pwsh
+              run: ./scripts/test-pocket-tts-model-cache.ps1
+
     pocket-tts-french-audio:
         name: Pocket TTS real French WAV on Windows
         runs-on: windows-latest
