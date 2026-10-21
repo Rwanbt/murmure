@@ -12,7 +12,7 @@
 //! its digest is verified against the value that is published with the
 //! release, and it is only ever loaded from that verified path.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The version of the ONNX Runtime that is used.
 pub const RUNTIME_VERSION: &str = "1.23.2";
@@ -20,10 +20,10 @@ pub const RUNTIME_VERSION: &str = "1.23.2";
 /// The name of the library that is loaded.
 pub const LIBRARY_NAME: &str = "onnxruntime.dll";
 
-/// The digest of the official CPU-only distribution for Windows, as
-/// published by Microsoft with the release.
+/// The digest of the library that is loaded, as it is extracted from the
+/// official CPU-only distribution for Windows.
 #[cfg(windows)]
-pub const RUNTIME_SHA256: &str = "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd";
+pub const RUNTIME_SHA256: &str = "dec964ab1ee36cc9b0ae247d13b376627992fc57dec0454354017ab8fd84f1ea";
 
 /// The relative path of the runtime inside the resource directory.
 const RESOURCE_PATH: &str = "onnxruntime/onnxruntime.dll";
@@ -51,6 +51,54 @@ pub fn state(app: &tauri::AppHandle) -> RuntimeState {
     }
 }
 
+/// A message that names the runtime that is expected, for the logs and for
+/// the errors that the user reads.
+pub fn expected_description() -> String {
+    format!("the ONNX Runtime {RUNTIME_VERSION} ({LIBRARY_NAME})")
+}
+
+/// The digest that the installed runtime has to match.
+pub fn expected_digest() -> &'static str {
+    #[cfg(windows)]
+    {
+        RUNTIME_SHA256
+    }
+    #[cfg(not(windows))]
+    {
+        ""
+    }
+}
+
+/// Verifies the digest of the installed runtime.
+///
+/// The runtime is a native library that the application loads and executes,
+/// so a file that was replaced after the installation must not be loaded. The
+/// digest that is checked here is the one that is published with the
+/// release.
+pub fn verify_digest(path: &std::path::Path) -> Result<(), String> {
+    let expected = expected_digest();
+    if expected.is_empty() {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path)
+        .map_err(|error| format!("The ONNX Runtime could not be read: {error}"))?;
+    let digest = sha256(&bytes);
+    if digest != expected {
+        return Err(format!(
+            "The ONNX Runtime at '{}' does not match the expected digest. Expected '{expected}' but got '{digest}'.",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+/// The hexadecimal digest of the given bytes.
+fn sha256(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    let digest = sha2::Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,8 +107,8 @@ mod tests {
     fn the_digest_is_pinned() {
         #[cfg(windows)]
         assert_eq!(
-            RUNTIME_SHA256,
-            "0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd"
+            expected_digest(),
+            "dec964ab1ee36cc9b0ae247d13b376627992fc57dec0454354017ab8fd84f1ea"
         );
     }
 
@@ -69,9 +117,8 @@ mod tests {
         // A library that is picked up from the working directory could be
         // replaced by another one, so the path must stay relative to the
         // resource directory of the application.
-        let relative = Path::new(RESOURCE_PATH);
         assert!(
-            !relative.is_absolute(),
+            !RESOURCE_PATH.starts_with('/') && !RESOURCE_PATH.contains(':'),
             "the resource path must stay relative to the resource directory"
         );
         assert!(

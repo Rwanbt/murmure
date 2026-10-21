@@ -107,6 +107,14 @@ public static class LoaderProbe
         }
         return GetProcAddress(module, function) != IntPtr.Zero;
     }
+
+    // The loader is asked whether the library can be loaded at all, which
+    // resolves the API set contracts to the library that hosts them.
+    public static bool CanLoad(string library)
+    {
+        IntPtr module = LoadLibraryW(library);
+        return module != IntPtr.Zero;
+    }
 }
 '@
 
@@ -126,13 +134,11 @@ function Test-Imports {
         return
     }
 
-    $candidate = Join-Path $systemDirectory $Name
-    if (-not (Test-Path -LiteralPath $candidate)) {
-        # The loader also looks next to the executable.
-        $candidate = Join-Path (Split-Path -Parent $TestBinary) $Name
-    }
-    if (-not (Test-Path -LiteralPath $candidate)) {
-        Write-Host ("  {0}: not present in the system directory nor next to the binary" -f $Name)
+    # The loader resolves the API set contracts to the library that hosts
+    # them, so the loader is the reference and not the file system.
+    if (-not [LoaderProbe]::CanLoad($Name)) {
+        Write-Host ("  {0}: the loader cannot load this library" -f $Name)
+        $missing.Add($Name)
         return
     }
 
@@ -153,26 +159,34 @@ function Test-Imports {
         foreach ($symbol in $absent) {
             Write-Host ("      $symbol")
         }
-        $missing.Add("$Name")
+        $missing.Add($Name)
     }
 }
 
 Write-Host 'Imported dynamic libraries and the functions they must export:'
+$current = ''
 foreach ($line in ($imports -split "`r?`n")) {
     $trimmed = $line.Trim()
     if ($trimmed -match '^\S+\.dll$') {
-        Test-Imports -Name $trimmed -Entries $functions
-        $library = $trimmed
+        # The header of a library closes the group of the previous one.
+        if ($current -and $functions.Count -gt 0) {
+            Test-Imports -Name $current -Entries $functions
+        }
+        $current = $trimmed
         $functions = New-Object System.Collections.Generic.List[string]
         continue
     }
-    if ($trimmed -match '^[0-9A-F]+ [0-9A-F]+ [0-9A-F]+ \S+$') {
+    # Every imported function is written as its ordinal and the name of the
+    # symbol, separated by spaces.
+    if ($trimmed -match '^[0-9A-F]+ \S+$') {
         $parts = $trimmed -split '\s+'
-        $functions.Add($parts[3])
+        $functions.Add($parts[1])
         $checked++
     }
 }
-Test-Imports -Name $library -Entries $functions
+if ($current -and $functions.Count -gt 0) {
+    Test-Imports -Name $current -Entries $functions
+}
 
 Write-Host ''
 Write-Host "Imported functions checked: $checked"

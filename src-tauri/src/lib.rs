@@ -177,7 +177,8 @@ pub fn run() {
                 }
                 crate::engine::onnx_runtime::RuntimeState::Missing => {
                     warn!(
-                        "The ONNX Runtime is not installed, the speech recognition is unavailable."
+                        "{} is not installed, the speech recognition is unavailable.",
+                        crate::engine::onnx_runtime::expected_description()
                     );
                 }
             }

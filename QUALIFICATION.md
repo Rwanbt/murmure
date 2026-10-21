@@ -87,7 +87,54 @@ functional parity is therefore not claimed.**
 | Cache deletion never escapes its directory | PROVEN (symlink and junction refused) |
 | No audio, transcription or spoken text logged | PROVEN by inspection of `src-tauri/src/tts` and `src-tauri/src/smartmic` |
 | `process:default` capability | Verified safe: `tauri-plugin-process` 2.3.1 grants only `allow-exit` and `allow-restart`, not arbitrary execution |
-| Dependency audit (`cargo audit`, `osv-scanner`) | OPEN |
+| Dependency audit (`cargo audit`, `osv-scanner`) | **PROVEN** (RustSec) | PR #54: the advisory database is checked against the exact lock file on every pull request, the reachable advisories are fixed, and the eight that need a major upgrade of a parent dependency are listed with their reason. `osv-scanner` for the JavaScript tree is still OPEN. |
+
+### 2.4 Speech-to-Text — map and scenario coverage
+
+The engine was already present in Murmure. It was mapped, not rebuilt.
+
+| Element | Implementation | Qualification |
+| --- | --- | --- |
+| Engine | Parakeet TDT 0.6B v3 int8, local ONNX inference (`src-tauri/src/engine/engine.rs`) | **PROVEN** — a real French recording is transcribed by the pinned model in CI (PR #52) |
+| Tokenizer | `resources/tokenizer.json`, committed in the repository | **PROVEN** — used by the round trip |
+| Model source | `Kieirra/murmure-model` release 1.3.0 | **PROVEN** — pinned digest, downloaded by the CI |
+| Dictionary boost | `engine/boost_tree.rs` | **PROVEN** — 10 unit tests |
+| Microphone selection | `audio/microphone.rs`: PulseAudio source on Linux, CPAL elsewhere, output devices filtered out, a display name migrated to a stable device id | **PARTIAL** — the label and identifier logic is unit tested, a real device change is not |
+| Microphone permission | delegated to the operating system; a refusal surfaces as `RecorderStartError::InitFailed`, the temporary file is removed and the user is notified | **MANUAL** — needs the operating system permission prompt |
+| Recording | `audio/recorder.rs`: CPAL capture, mono downmix, the real-time callback only downmixes and hands the samples over | **PARTIAL** — the capture needs a real device |
+| Silence detection | `audio/vad.rs` | **PROVEN** — 10 unit tests |
+| Chunking | `audio/chunking.rs` | **PROVEN** — 19 unit tests |
+| Resampling to 16 kHz | `audio/helpers.rs::resample`, checked against a linear reference | **PROVEN** — unit tests |
+| Streaming preview | `audio/streaming.rs` | **PARTIAL** — no device |
+| Temporary audio | `<temp>/murmure_recordings`, owner-only permissions on Unix, unique names, removed on cancel and on a failed start | **PROVEN** — by inspection and by the start-failure path |
+| Transcription history | the last five transcriptions | **PROVEN** — upstream behaviour, unchanged |
+| Clipboard | written only after a transcription, and never for an empty one | **PROVEN** — `write_transcription` refuses an empty text |
+| User settings | microphone, output volume, silence timeout, language | **PROVEN** |
+| Shortcuts | start, stop, toggle, paste last transcript | **PROVEN** |
+
+#### Mandatory scenarios
+
+| Scenario | Status | Evidence |
+| --- | --- | --- |
+| First recording | **PROVEN** | the round trip transcribes a real recording |
+| Repeated recording | **PROVEN** | a finished session can be claimed again (unit test) |
+| Manual stop | **PROVEN** | the session claim and the stop path |
+| Short recording | **PROVEN** | chunking unit tests |
+| Long recording within the limits | **PROVEN** | chunking unit tests |
+| Silence | **PROVEN** | 10 VAD unit tests |
+| No audio input | **PROVEN** | the recorder reports `InitFailed`, the temporary file is removed and the user is notified |
+| Microphone unavailable | **PROVEN** | same path as no audio input |
+| Permission refused | **MANUAL** | needs the operating system permission prompt |
+| Permission revoked | **MANUAL** | same |
+| Device change | **MANUAL** | needs two real devices |
+| System interruption | **PARTIAL** | the session claim survives a competing trigger; a full interruption needs a real device |
+| French transcription | **PROVEN** | the round trip asserts real French words |
+| Offline transcription | **PROVEN** | the model and the tokenizer are local; no network call in the path |
+| Model absent | **PROVEN** | `get_model_path` reports the model as missing |
+| Model corrupted | **PARTIAL** | the ONNX session fails to load; not exercised by a test |
+| Restart after a failure | **PROVEN** | the session claim is released on every error path |
+| Several rapid triggers | **PROVEN** | the atomic session claim (PR #51) |
+| Concurrent shortcuts | **PROVEN** | the atomic claim, exactly one of two concurrent claims wins |
 
 ---
 
@@ -107,11 +154,14 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 8 | ONNX Runtime download reliability | P1 | VALIDATING | `ci/harden-onnx-runtime-download` | #46 | `9a5ba3c` | CI on PR #46 | running | — | — | — |
 | 9 | Model lifecycle states | P0 | VALIDATING | `feat/tts-model-lifecycle-status` | #48 | `8abbf42` | 5 deterministic checks | running | the states that need weight integrity or download tracking | — | — |
 | 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
-| 11 | STT qualification | P0 | TODO | — | — | — | — | — | not started | — | map the existing engine and cover the mandatory scenarios |
+| 11 | STT qualification | P0 | VALIDATING | `test/stt-real-french-roundtrip` | #52 | `259fbb5` | a real French recording transcribed by the pinned model | running | the device and permission scenarios | needs a real microphone | execute the manual protocol |
 | 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
-| 13 | Dependency audit | P1 | TODO | “” | “” | “” | “” | “” | not started | “” | “” |
-| 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `9e6ef81` | “” | this document | “” | “” | “” |
+| 13 | Dependency audit | P1 | VALIDATING | `fix/dependency-advisories` | #54 | `2d3bf46` | the RustSec advisory database | running | eight advisories need a major upgrade of a parent dependency | — | tracked and listed in the audit gate |
+| 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `f5cdbc8` | — | this document | — | — | — |
+| 15 | Rapid triggers keep the recording | P0 | VALIDATING | `fix/stt-second-trigger-keeps-recording` | #51 | `ad22b02` | 4 unit tests | running | — | — | — |
+| 16 | French Pocket TTS errors | P1 | VALIDATING | `fix/tts-localized-errors` | #53 | `8e2638b` | the type check and the lint | running | — | — | — |
 | 15 | The engine does not depend on the graphics stack | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | - | the runtime is loaded from a verified path | running | the packaged application has to ship the runtime | - | - |
+| 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `07e9b41` | the real generated recording | running | — | — | — |
 
 ### 3.1 Defects found and fixed
 
@@ -127,7 +177,13 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | A runtime that exited before reading the text was reported as a transport error instead of a generation failure | Medium | CI failure `a_generation_that_produces_no_wave_is_reported` | PR #45 |
 | The ONNX Runtime prebuilt download is not covered by the rust cache, so a dropped connection failed the mandatory Clippy gate | Medium | job `118970407231`, `Peer disconnected` | PR #46 |
 | A duplicated `key:` in a workflow makes GitHub refuse to load it, and PyYAML accepts duplicate keys silently | Medium | three runs failed with no job at all | PR #46, `scripts/validate-workflows.py` |
+| A rapid second trigger replaced the chunk pipeline of the running recording, so the audio was discarded and the user got an empty result | High | the wake word path called `record_audio` without the guard the shortcut paths have | PR #51, an atomic session claim |
+| The real French WAV proof required 120 silent samples inside a 20 ms window, which Rodio's mixer blocks can exceed | Medium | the proof failed on a loaded runner although the transport behaved correctly | PR #50, a realistic silence bound |
 | The speech recognition engine pulled the DirectX 12 libraries into the import table of every binary, so a Windows installation without the full graphics stack refused to start the program | High | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) when the test binary was launched: `DirectML.dll` needs `D3D12SerializeVersionedRootSignature` from `d3d12.dll`, and the server image does not export it | PR #50, the official CPU-only ONNX Runtime is loaded at runtime and the DirectX dependency is gone |
+| The test binaries carried no application manifest, so the loader resolved the version 5 of the common controls, which does not export the task dialog that the window library of the framework imports, and the process refused to start | Critical | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) reproduced locally; the import table names `comctl32.dll!TaskDialogIndirect`, and only the side-by-side version 6 of that library exports it | PR #50, the build script embeds the manifest in the test binaries, exactly like the installer does for the application |
+| The Tauri build script refuses to run without the SmartMic resources, so the Rust crate never compiled in the new jobs | Medium | `glob pattern resources/smartmic/* path not found` | PR #52, the resources are built first |
+| The dependency audit found fourteen vulnerabilities on the lock file | High | `cargo audit` against `src-tauri/Cargo.lock` | PR #54, the reachable ones are fixed and the rest are listed with their reason |
+| The dependency audit could not publish its result | Low | `Resource not accessible by integration` | PR #54, the job now grants the `checks` permission |
 
 ---
 
@@ -140,7 +196,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | The Rodio real-WAV decode test is outside the chain | Lower: the real-audio CI job covers the actual WAV | `test/pocket-tts-real-wav-rodio` (PR #35) is not an ancestor of the chain head. |
 | The model state machine is not exposed | The UI cannot show whether a model is ready, corrupted or usable offline | Partly closed by PR #48: the catalog, the local state and the offline availability are exposed. The states that need weight integrity or download tracking remain open. |
 | Linux and macOS have no pinned Pocket TTS build | No TTS outside Windows | No official Kyutai release is pinned for those platforms; using an unverified binary is refused by design. |
-| The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | The STT qualification is listed as TODO in §3. |
+| The STT path is not re-qualified in this effort | STT remains at the upstream level of maturity | Closed by PR #52, which transcribes real French speech with the pinned Parakeet model, and by the STT map in §2.4. The device, permission and interruption scenarios stay manual. |
 | No dependency audit runs in CI | Known dependency vulnerabilities may go unnoticed | `cargo audit` / `osv-scanner` are not wired. |
 | Error messages from the Rust backend reach the French interface untranslated | Reduced UX quality | The backend returns English strings; the frontend shows them verbatim. |
 
@@ -211,7 +267,9 @@ that the Definition of Done is not yet met:
 - the graphical user journey of the packaged application is not demonstrated
   and is still `BLOCKED` on a desktop session;
 - the global pause/resume shortcut is missing from the chain;
-- the STT path is not re-qualified in this effort;
+- the STT path is only partly re-qualified: the engine transcribes real
+  French speech, but the device, permission and interruption scenarios
+  still need a real microphone;
 - the model lifecycle states are only partly exposed;
 - the dependency audit is not wired into CI.
 

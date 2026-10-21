@@ -848,6 +848,9 @@ impl ParakeetEngine {
                 )
                 .into());
             }
+            // The runtime is executed, so a file that was replaced after the
+            // installation must not be loaded.
+            super::onnx_runtime::verify_digest(&path)?;
             ort::init_from(&path)
                 .map_err(|error| {
                     format!(

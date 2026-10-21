@@ -158,6 +158,65 @@ jobs:
               run: |
                   ./scripts/test-pocket-tts-offline-windows.ps1 -Destination "$env:RUNNER_TEMP/pocket-tts-offline"
 
+    # A full local round trip: the pinned Pocket TTS runtime produces French
+    # speech and the pinned Parakeet model transcribes it. It proves the STT
+    # path really recognises French audio, not only that it compiles.
+    pocket-tts-stt-roundtrip:
+        name: Pocket TTS to Parakeet French round trip
+        runs-on: windows-latest
+        timeout-minutes: 40
+        permissions:
+            contents: read
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: lts/*
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7
+            - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+              with:
+                  workspaces: './src-tauri -> target'
+            - name: Install pnpm
+              run: npm install -g pnpm@10.19.0 --ignore-scripts
+              shell: pwsh
+            - name: Download & extract ONNX model (Windows)
+              shell: pwsh
+              run: |
+                  New-Item -ItemType Directory -Force -Path resources | Out-Null
+                  $zip = Join-Path $env:RUNNER_TEMP "model.zip"
+                  Invoke-WebRequest -Uri "https://github.com/Kieirra/murmure-model/releases/download/1.3.0/parakeet-tdt-0.6b-v3-int8.zip" -OutFile $zip
+                  Expand-Archive -Path $zip -DestinationPath resources -Force
+            - name: Install frontend deps
+              run: pnpm install --ignore-scripts
+              shell: pwsh
+            - name: Build the local frontend resources
+              # The Tauri build script refuses to run when the SmartMic
+              # resources are missing, so they are built before the crate.
+              run: pnpm build:smartmic
+              shell: pwsh
+            - name: Generate real French speech and transcribe it with the pinned model
+              shell: pwsh
+              env:
+                  HF_HUB_DISABLE_TELEMETRY: '1'
+              run: |
+                  $destination = Join-Path $env:RUNNER_TEMP 'murmure-stt-roundtrip'
+                  $wav = Join-Path $destination 'french-smoke.wav'
+                  try {
+                      ./scripts/verify-pocket-tts-windows.ps1 -Destination $destination -GenerateFrench -KeepGeneratedWav
+                      if (-not (Test-Path -LiteralPath $wav)) { throw 'Generated French WAV missing' }
+                      $env:MURMURE_STT_FIXTURE_WAV = $wav
+                      $env:MURMURE_STT_MODEL_DIR = Join-Path $env:GITHUB_WORKSPACE 'resources\parakeet-tdt-0.6b-v3-int8'
+                      $env:MURMURE_STT_TOKENIZER = Join-Path $env:GITHUB_WORKSPACE 'resources\tokenizer.json'
+                      cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_french_speech_is_transcribed -- --exact --ignored --nocapture
+                      if ($LASTEXITCODE -ne 0) { throw 'The real French round trip failed' }
+                  } finally {
+                      Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
+                  }
+
+    # The dependency audit runs where the lock file is fixed, so the advisory
+    # list it reports matches the versions that are actually shipped.
     # A green pipeline must never hide a skipped real-audio validation. The
     # two jobs above are the only evidence that Pocket TTS really synthesizes
     # French speech on the target platform, so a skipped or cancelled result

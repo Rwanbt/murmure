@@ -49,10 +49,11 @@ $ErrorActionPreference = 'Stop'
 # anything that does not match it.
 $releases = @{
     '1.23.2' = @{
-        Url       = 'https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip'
-        Sha256    = '0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd'
-        FileName  = 'onnxruntime-win-x64-1.23.2.zip'
-        Directory = 'onnxruntime-win-x64-1.23.2'
+        Url          = 'https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-win-x64-1.23.2.zip'
+        Sha256       = '0b38df9af21834e41e73d602d90db5cb06dbd1ca618948b8f1d66d607ac9f3cd'
+        LibrarySha256 = 'dec964ab1ee36cc9b0ae247d13b376627992fc57dec0454354017ab8fd84f1ea'
+        FileName     = 'onnxruntime-win-x64-1.23.2.zip'
+        Directory    = 'onnxruntime-win-x64-1.23.2'
     }
 }
 
@@ -95,10 +96,20 @@ if ((Test-Path -LiteralPath $library) -and -not $Force) {
     Expand-Archive -LiteralPath $archive -DestinationPath $extracted -Force
 
     $source = Join-Path $extracted $release.Directory
-    if (-not (Test-Path -LiteralPath (Join-Path $source 'lib\onnxruntime.dll'))) {
+    $extractedLibrary = Join-Path $source 'lib\onnxruntime.dll'
+    if (-not (Test-Path -LiteralPath $extractedLibrary)) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
         throw 'The extracted ONNX Runtime does not contain the expected library. Nothing was installed.'
     }
+
+    # The engine verifies the digest of the library before it loads it, so the
+    # library that is installed has to be the one that the engine expects.
+    $libraryDigest = (Get-FileHash -LiteralPath $extractedLibrary -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($libraryDigest -ne $release.LibrarySha256) {
+        Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+        throw "The extracted ONNX Runtime library does not match the expected digest. Expected '$($release.LibrarySha256)' but got '$libraryDigest'. Nothing was installed."
+    }
+    Write-Host 'The digest of the library matches the value the engine verifies.'
 
     if (Test-Path -LiteralPath $runtimeDirectory) {
         Remove-Item -LiteralPath $runtimeDirectory -Recurse -Force
@@ -126,6 +137,5 @@ foreach ($name in @('onnxruntime.dll', 'onnxruntime_providers_shared.dll')) {
 }
 
 Write-Host ''
-Write-Host 'Set the following environment variables before building the crate:'
-Write-Host "  ORT_LIB_LOCATION=$libraryDirectory"
-Write-Host '  ORT_PREFER_DYNAMIC_LINK=1'
+Write-Host 'Set the following environment variable before the crate runs:'
+Write-Host "  ORT_DYLIB_PATH=$library"
