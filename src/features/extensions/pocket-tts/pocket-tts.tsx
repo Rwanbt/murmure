@@ -30,7 +30,7 @@ interface InstallProgress {
     totalBytes: number | null;
 }
 
-type ModelState = 'not_installed' | 'ready' | 'in_use';
+type ModelState = 'not_installed' | 'downloading' | 'corrupted' | 'ready' | 'in_use';
 
 interface ModelStatus {
     id: string;
@@ -413,6 +413,10 @@ export const PocketTts = () => {
                                     {status.state === 'ready' && t('Ready, usable offline')}
                                     {status.state === 'in_use' && t('In use')}
                                     {status.state === 'not_installed' && t('Not downloaded yet')}
+                                    {status.state === 'downloading' &&
+                                        t('Download unfinished, start it again')}
+                                    {status.state === 'corrupted' &&
+                                        t('Incomplete or unreadable, download it again')}
                                     {size !== null && ` Â· ${size}`}
                                     {status.revision !== null && ` Â· ${status.revision.slice(0, 12)}`}
                                     {' Â· '}
