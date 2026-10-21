@@ -160,7 +160,7 @@ jobs:
             - name: Generate and verify a real French WAV
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
-              run: ./scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+              run: bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
 
     pocket-tts-macos-real-audio:
         name: Pocket TTS real French WAV on macOS
@@ -175,7 +175,7 @@ jobs:
             - name: Generate and verify a real French WAV
               env:
                   HF_HUB_DISABLE_TELEMETRY: '1'
-              run: ./scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
+              run: bash scripts/verify-pocket-tts-posix.sh -d "$RUNNER_TEMP/pocket-tts"
 
     pocket-tts-model-isolation:
         name: Pocket TTS model cache isolation contract
