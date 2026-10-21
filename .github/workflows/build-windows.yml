@@ -75,6 +75,8 @@ jobs:
               run: |
                   cargo test --manifest-path src-tauri/Cargo.toml --lib tts::selection_windows::tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows selection unit tests failed' }
+                  cargo test --manifest-path src-tauri/Cargo.toml --lib tts::preview::tests
+                  if ($LASTEXITCODE -ne 0) { throw 'Windows Pocket TTS preview unit tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib commands::shortcuts::tts_shortcut_tests
                   if ($LASTEXITCODE -ne 0) { throw 'Windows shortcut unit tests failed' }
                   cargo test --manifest-path src-tauri/Cargo.toml --lib shortcuts::registry::tests
