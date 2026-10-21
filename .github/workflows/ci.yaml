@@ -254,6 +254,19 @@ jobs:
             - uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
               with:
                   workspaces: './src-tauri -> target'
+            # The engine loads the ONNX Runtime at run time, so the job has to
+            # install the official CPU-only distribution and point the engine
+            # at it. Without this the round trip cannot load the model, which
+            # is what happened while the test was not registered at all.
+            - name: Install the CPU-only ONNX Runtime
+              shell: pwsh
+              run: |
+                  $runtime = Join-Path $env:RUNNER_TEMP 'onnxruntime'
+                  ./scripts/install-onnx-runtime.ps1 -Destination $runtime
+                  $library = Join-Path $runtime 'onnxruntime-win-x64-1.23.2\lib'
+                  $dll = Join-Path $library 'onnxruntime.dll'
+                  "ORT_DYLIB_PATH=$dll" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  $library | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
             - name: Install pnpm
               run: npm install -g pnpm@10.19.0 --ignore-scripts
               shell: pwsh
