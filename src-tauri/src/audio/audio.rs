@@ -12,14 +12,23 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
-pub fn record_audio(app: &AppHandle, mode: RecordingMode) {
+/// Start a recording session.
+///
+/// Returns `false` when a session is already running. The refused trigger
+/// changes nothing: the running session keeps its generation, its chunk
+/// pipeline and its audio, so a rapid second trigger can never discard what
+/// has already been recorded.
+pub fn record_audio(app: &AppHandle, mode: RecordingMode, trigger: RecordingTrigger) -> bool {
     let state = app.state::<AudioState>();
-    let my_gen = state.begin_session();
-    state.set_session_active(true);
+    let my_gen = match state.claim_session() {
+        Ok(generation) => generation,
+        Err(_) => {
+            debug!("A recording session is already running; the new trigger is refused");
+            return false;
+        }
+    };
     state.set_recording_mode(mode);
-    if state.get_recording_trigger() != RecordingTrigger::WakeWord {
-        state.set_recording_trigger(RecordingTrigger::Keyboard);
-    }
+    state.set_recording_trigger(trigger);
 
     if matches!(mode, RecordingMode::Llm | RecordingMode::Command) {
         crate::llm::warmup_ollama_model_background(app, mode);
@@ -31,6 +40,7 @@ pub fn record_audio(app: &AppHandle, mode: RecordingMode) {
     *state.chunk_pipeline.lock() = Some(ChunkPipeline::start(app, preview));
 
     internal_record_audio(app, my_gen);
+    true
 }
 
 fn internal_record_audio(app: &AppHandle, my_gen: u64) {
@@ -58,9 +68,17 @@ fn internal_record_audio(app: &AppHandle, my_gen: u64) {
             overlay::hide_overlay_if_idle(app);
             debug!("Recorder start superseded by a concurrent stop; aborted");
         }
-        // Another session still owns the recorder, so it also owns the session
-        // flag and the overlay: its own stop path releases both.
-        Err(RecorderStartError::Busy) => {}
+        // A recorder is already installed, so this session cannot capture
+        // anything. Release the claim: the application must not refuse every
+        // later recording because of a stale recorder.
+        Err(RecorderStartError::Busy) => {
+            if state.current_session() == my_gen {
+                state.set_session_active(false);
+            }
+            let _ = state.chunk_pipeline.lock().take();
+            overlay::hide_overlay_if_idle(app);
+            debug!("A recorder is already running; the new session was aborted");
+        }
         Err(_) => {
             state.set_session_active(false);
             overlay::hide_overlay_if_idle(app);

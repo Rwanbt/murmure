@@ -2,7 +2,7 @@ use log::warn;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::record_audio;
-use crate::audio::types::RecordingMode;
+use crate::audio::types::{RecordingMode, RecordingTrigger};
 use crate::cli::types::CliCommand;
 use crate::shortcuts::shortcuts::{
     ensure_command_ready, ensure_llm_mode_ready, force_cancel_recording, is_recording_idle,
@@ -60,7 +60,7 @@ fn cli_toggle_recording(app: &AppHandle, mode: RecordingMode) {
     let shortcut_state = app.state::<ShortcutState>();
     let app_for_fn = app.clone();
     toggle_recording_action(app, target, shortcut_state.inner(), move || {
-        record_audio(&app_for_fn, mode);
+        record_audio(&app_for_fn, mode, RecordingTrigger::Keyboard);
     });
 }
 
