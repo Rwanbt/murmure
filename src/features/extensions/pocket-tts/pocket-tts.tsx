@@ -287,7 +287,7 @@ export const PocketTts = () => {
                         onClick={() => void installOfficialRuntime()}
                         data-testid="pocket-tts-install"
                     >
-                        {installing ? t('Installing verified Pocket TTSâ€¦') : t('Install the official Pocket TTS runtime')}
+                        {installing ? t('Installing verified Pocket TTS…') : t('Install the official Pocket TTS runtime')}
                     </button>
                 )}
                 {installing && (
@@ -303,7 +303,7 @@ export const PocketTts = () => {
                         ) : null}
                         <p className="text-sm">
                             {cancelRequested
-                                ? t('Cancelling Pocket TTS installationâ€¦')
+                                ? t('Cancelling Pocket TTS installation…')
                                 : installProgress?.totalBytes
                                     ? `${t('Downloading Pocket TTS')}: ${Math.min(100, Math.round(100 * installProgress.receivedBytes / installProgress.totalBytes))}%`
                                     : `${t('Downloading Pocket TTS')}: ${installProgress?.receivedBytes ?? 0} ${t('bytes received')}`}
@@ -325,7 +325,7 @@ export const PocketTts = () => {
 
                 <div role="status" aria-live="polite" data-testid="pocket-tts-status">
                     {state === 'idle' && t('Ready')}
-                    {state === 'generating' && t('Generating audio on CPUâ€¦')}
+                    {state === 'generating' && t('Generating audio on CPU…')}
                     {state === 'playing' && t('Playing French preview')}
                     {state === 'paused' && t('Paused')}
                     {state === 'stopped' && t('Stopped')}
@@ -353,7 +353,7 @@ export const PocketTts = () => {
                     </label>
                     <p className="text-xs text-muted-foreground">
                         <a className="underline" href="https://huggingface.co/kyutai/pocket-tts-without-voice-cloning" target="_blank" rel="noopener noreferrer">
-                            {t('Kyutai French model â€” CC BY 4.0')}
+                            {t('Kyutai French model — CC BY 4.0')}
                         </a>
                         {' Â· '}
                         {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
@@ -366,7 +366,7 @@ export const PocketTts = () => {
                     className="rounded-md border border-border px-4 py-2 disabled:opacity-50"
                     data-testid="pocket-tts-clear-cache"
                 >
-                    {clearingCache ? t('Deleting downloaded Pocket TTS modelsâ€¦') : t('Delete downloaded Pocket TTS models')}
+                    {clearingCache ? t('Deleting downloaded Pocket TTS models…') : t('Delete downloaded Pocket TTS models')}
                 </button>
                 <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
                     {t('French speech model')}
@@ -379,8 +379,8 @@ export const PocketTts = () => {
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
                     data-testid="pocket-tts-model"
                 >
-                    <option value="french">{t('French â€” efficient CPU model')}</option>
-                    <option value="french_24l">{t('French â€” 24 layers (larger experimental model)')}</option>
+                    <option value="french">{t('French — efficient CPU model')}</option>
+                    <option value="french_24l">{t('French — 24 layers (larger experimental model)')}</option>
                 </select>
                 <label htmlFor="pocket-tts-volume" className="block text-sm font-medium">
                     {t('Playback volume')}: {volume}%
@@ -437,7 +437,7 @@ export const PocketTts = () => {
                     onChange={(event) => setSpeechText(event.target.value)}
                     className="w-full rounded-md border border-border bg-background p-3 text-sm"
                     data-testid="pocket-tts-text"
-                    placeholder={t('Type a French sentence to read locallyâ€¦')}
+                    placeholder={t('Type a French sentence to read locally…')}
                 />
                 <p className="text-xs text-muted-foreground">
                     {t('Only text you explicitly submit is synthesized. Code blocks and likely credential lines are omitted.')}

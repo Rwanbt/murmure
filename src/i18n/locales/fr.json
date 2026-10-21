@@ -747,5 +747,9 @@
     "Install the official Pocket TTS runtime": "Installer le moteur Pocket TTS officiel",
     "Pocket TTS download progress": "Progression du téléchargement de Pocket TTS",
     "The official Pocket TTS release has no build for this system, so speech is unavailable here.": "La version officielle de Pocket TTS ne fournit pas de binaire pour ce système, la lecture est donc indisponible ici.",
-    "Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.": "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié."
+    "Pocket TTS is not installed in Murmure. Install the official verified runtime explicitly.": "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié.",
+    "Delete Pocket TTS models downloaded by Murmure?": "Supprimer les modèles Pocket TTS téléchargés par Murmure ?",
+    "Delete downloaded Pocket TTS models": "Supprimer les modèles Pocket TTS téléchargés",
+    "Deleting downloaded Pocket TTS models…": "Suppression des modèles Pocket TTS téléchargés…",
+    "Murmure Pocket TTS model cache cleared.": "Cache des modèles Pocket TTS de Murmure vidé."
 }

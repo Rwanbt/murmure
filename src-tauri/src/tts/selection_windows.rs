@@ -2,6 +2,7 @@
 //! No keyboard injection, clipboard access or application focus changes.
 //! Untrusted providers may refuse TextPattern; fail closed without fallback.
 
+use log::warn;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
@@ -147,6 +148,11 @@ pub fn speak_selection(app: &AppHandle) {
             })
         }) {
             // Emit diagnostics only, never text content or application names.
+            // The log is the only trace when the user pressed the shortcut
+            // from another application and never sees the speech screen, so a
+            // silent refusal there looks exactly like a shortcut that does
+            // nothing.
+            warn!("Selection reading refused: {detail}");
             let _ = app.emit("pocket-tts-selection-error", detail);
         }
     });

@@ -85,6 +85,25 @@ if ($process.HasExited) {
 }
 Write-Output "The installed application survived a $LaunchSeconds second startup window."
 
+# --- The speech engine really loads --------------------------------------
+# A package that starts but cannot load its ONNX Runtime is a package that
+# transcribes nothing, which is the whole product. This script used to watch
+# the process only, so a bundle that shipped without
+# resources/onnxruntime/onnxruntime.dll passed every check while the first
+# dictation failed on the user's machine.
+$logFile = Join-Path $dataDirectory 'logs\murmure.log'
+if (-not (Test-Path -LiteralPath $logFile)) {
+    Fail "The application wrote no log at $logFile, so the engine state cannot be checked"
+}
+$log = Get-Content -LiteralPath $logFile -Raw
+if ($log -match 'ONNX Runtime .* is not installed') {
+    Fail "The application could not find its ONNX Runtime: the package is missing resources/onnxruntime/onnxruntime.dll"
+}
+if ($log -notmatch 'Transcription engine initialized and ready') {
+    Fail "The speech engine never reported itself ready, so this package cannot transcribe"
+}
+Write-Output "The speech engine found its ONNX Runtime and reported itself ready."
+
 # --- Privacy: no model is downloaded without an explicit consent ----------
 $dataDirectory = Join-Path $env:LOCALAPPDATA 'com.al1x-ai.murmure'
 if (Test-Path -LiteralPath (Join-Path $dataDirectory 'pocket-tts')) {

@@ -56,3 +56,7 @@ tmp-release-flat/
 # Python bytecode caches produced by running the scripts
 __pycache__/
 *.pyc
+# The CPU-only ONNX Runtime is fetched by scripts/install-onnx-runtime.ps1
+# and copied into the bundled resources at build time. It is a 13.5 MB
+# binary, so it is never committed.
+resources/onnxruntime/
