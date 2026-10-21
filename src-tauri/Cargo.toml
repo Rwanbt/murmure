@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "murmure"
 version = "2.0.3"
 description = "Privacy-first speech-to-text, running entirely on your machine"
