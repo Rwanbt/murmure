@@ -24,7 +24,7 @@ this report is the summary and the verdict.
 | Screen structure audit | **133 screens**, 0 finding | `scripts/audit-accessibility.py` |
 | Rust unit tests | **400 passed, 0 failed** | `cargo test --lib` |
 | TypeScript and lint | **Clean** | `tsc --noEmit` exit 0, `eslint --max-warnings 0` exit 0 |
-| STT round trip with the real model | **NOT PROVEN, and the job that claimed it was green while running zero tests.** The function carried `#[ignore]` without `#[test]`, so the harness never registered it and cargo reported `running 0 tests` and succeeded. The attribute is restored and the job now fails unless the output contains `1 passed` (commit `0264519`); the re-run is what will decide the claim | "Pocket TTS to Parakeet French round trip" job, log line `running 0 tests; 404 filtered out` in run `39587708682` |
+| STT round trip with the real model | **PROVEN**, after two defects were removed. It now reports `1 passed; 0 failed; 404 filtered out`, transcribes `"bonjour ceci est un essai de synthese vocale locale"`, loads the engine in 2.27 s and transcribes 3.64 s of audio in 0.83 s (real time factor 0.228) | job "Pocket TTS to Parakeet French round trip" `119192646552`, run `39591303205` at `5f5b474`. Before that: `running 0 tests; 404 filtered out` in run `39587708682`, then `The ONNX Runtime is not installed` in run `39589886791` |
 
 ## 2. Defects found and fixed
 
@@ -55,7 +55,11 @@ Two claims made earlier in this effort were **wrong and were corrected**:
    successfully. A green job that runs nothing is worse than a red one,
    because it removes the reason to look. The attribute is restored, the job
    now refuses a run that does not report `1 passed`, and a mechanical check
-   refuses any ignored function that is not registered.
+   refuses any ignored function that is not registered. The first honest run
+   then failed for a second reason: the job had never installed the ONNX
+   Runtime the engine loads, which nobody could notice while the test was not
+   running. With both fixed, the job passes on a real transcription
+   (`5f5b474`, job `119192646552`).
 
 ## 3. Pull requests
 
