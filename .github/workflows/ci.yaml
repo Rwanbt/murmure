@@ -8,6 +8,12 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+            # A contrast claim is only worth what it measures. The tokens of
+            # the dark theme are converted from oklch to sRGB and checked
+            # against the WCAG 2.2 AA thresholds, so a palette change cannot
+            # silently drop the interface below them.
+            - name: Measure the contrast of the interface tokens
+              run: python3 scripts/check-contrast.py --stylesheet src/tailwind.css
 
             - uses: actions/setup-node@v4
               with:
