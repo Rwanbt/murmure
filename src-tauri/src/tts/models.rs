@@ -45,7 +45,7 @@ pub const FRENCH_MODELS: [PocketTtsModel; 2] = [
 ];
 
 /// Lifecycle state of a model in Murmure's own cache.
-#[derive(Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelState {
     /// The weights are not available locally.
