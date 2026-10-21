@@ -49,11 +49,25 @@ pub fn restore_foreground() -> bool {
     #[cfg(target_os = "windows")]
     {
         use std::sync::atomic::Ordering;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{IsWindow, SetForegroundWindow};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
+        };
 
         let raw = TARGET.swap(0, Ordering::AcqRel);
         if raw == 0 {
             return false;
+        }
+        // Only undo a focus change that this application caused. If the
+        // foreground is already a foreign window, the user moved there
+        // themselves while the transcription was being prepared, and pulling
+        // the focus back would send the text into the window they left.
+        let current = unsafe { GetForegroundWindow() };
+        if !current.is_null() {
+            let mut process = 0_u32;
+            unsafe { GetWindowThreadProcessId(current, &mut process) };
+            if process != 0 && process != std::process::id() {
+                return false;
+            }
         }
         let handle = raw as *mut core::ffi::c_void;
         unsafe {
