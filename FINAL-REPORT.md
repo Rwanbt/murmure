@@ -124,17 +124,26 @@ are `BLOCKED`, with the reason and a manual protocol recorded in
 
 1. **The graphical user journey was never executed.** Pause, resume, stop,
    volume, selection reading, restart and cache reuse through the interface
-   are unproven. The automated part covers install, launch and shutdown only.
-2. **No microphone was ever exercised.** Permission refused or revoked, absent
-   input, device change and system interruption are unproven.
+   are unproven. The automated part covers the build, the install, the launch,
+   the stop, the uninstall and the absence of leftovers, both in CI and by
+   hand on a real desktop.
+2. **The microphone was exercised, but not through the interface.** A real
+   capture from this machine's array was transcribed by the pinned model, and
+   a real silent capture produced no words. What remains unproven is
+   everything the interface drives: permission refused, permission revoked,
+   absent input, device change, system interruption and the shortcuts.
 3. **No screen reader was ever used.** Contrast and structure are measured; the
    actual announcement order is not.
 4. **Two POSIX targets are pinned but never run.** `aarch64-unknown-linux-gnu`
    and `x86_64-apple-darwin` are refused at run time rather than trusted.
-5. **Two JavaScript advisories are accepted**, each with a written reason and a
+5. **Three lifecycle states have no signal.** `verifying`, `failed` and
+   `removing` cannot be reported, because the weights are fetched by the
+   official CLI, which the application does not instrument. Reporting them
+   would mean inventing them.
+6. **Two JavaScript advisories are accepted**, each with a written reason and a
    condition that would invalidate it.
-6. **Eight RustSec advisories are accepted**, each with a written reason.
-7. **Performance is measured once, not budgeted.** The round trip prints the load time and the real time factor of the pinned model on the Windows runner, with a loose bound that only catches a pathological regression. There is no baseline across versions and no budget for the interface.
+7. **Eight RustSec advisories are accepted**, each with a written reason.
+8. **Performance is measured once, not budgeted.** The round trip prints the load time and the real time factor of the pinned model on the Windows runner, with a loose bound that only catches a pathological regression. There is no baseline across versions and no budget for the interface.
 
 ## 7. Verdict
 
