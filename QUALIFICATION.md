@@ -177,6 +177,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 17 | Real French WAV through the production Rodio decoder | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | `ddaa83e` | the real generated recording | running | “” | “” | “” |
 | 18 | The engine does not depend on the graphics stack | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `c99f3e4` | the whole unit suite, 400 passed | `cargo test --lib` | the packaged application has to ship the runtime | - | validate the packaged installer |
 | 19 | The test binaries carry the common controls manifest | P0 | DONE | `feat/tts-pause-resume-hotkey-port` | #50 | `5a64f7c` | the whole unit suite, 400 passed and 0 failed | `cargo test --lib` | - | - | - |
+| 20 | Pocket TTS qualified on Linux and macOS | P2 | VALIDATING | `fix/dependency-advisories` | #54 | `d11a701` | 11 validator checks, 4 pinned digests against the published `SHA256SUMS` | running | the runtime is published and verified, the Rust installer is still Windows-only | - | wire the POSIX runtime into the Rust side |
 
 ### 3.1 Defects found and fixed
 
