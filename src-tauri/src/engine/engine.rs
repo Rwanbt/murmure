@@ -8,7 +8,7 @@ use ort::value::TensorRef;
 use regex::Regex;
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::boost_tree::{BiasCandidate, BoostTree};
 use super::helpers::{load_tokenizer, tokenize_word_to_ids, word_variants};
@@ -831,6 +831,36 @@ impl ParakeetEngine {
         engine.load_model_with_params(model_path, params)?;
         Ok(engine)
     }
+
+    /// Loads the ONNX Runtime that the sessions run on.
+    ///
+    /// The runtime is bound to the first library that is loaded, so it has to
+    /// be loaded before any session is created. The path is taken from the
+    /// environment when it is set, which is how the continuous integration
+    /// jobs point the build at the runtime they installed.
+    pub fn load_runtime() -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(path) = std::env::var_os("ORT_DYLIB_PATH") {
+            let path = PathBuf::from(path);
+            if !path.is_file() {
+                return Err(format!(
+                    "The ONNX Runtime named by ORT_DYLIB_PATH does not exist: {}",
+                    path.display()
+                )
+                .into());
+            }
+            ort::init_from(&path)
+                .map_err(|error| {
+                    format!(
+                        "The ONNX Runtime at '{}' could not be loaded: {error}",
+                        path.display()
+                    )
+                })?
+                .commit();
+            log::info!("The ONNX Runtime was loaded from {}", path.display());
+            return Ok(());
+        }
+        Err("The ONNX Runtime is not installed, the speech recognition is unavailable.".into())
+    }
 }
 
 impl TranscriptionEngine for ParakeetEngine {
@@ -842,6 +872,9 @@ impl TranscriptionEngine for ParakeetEngine {
         model_path: &StdPath,
         params: Self::ModelParams,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // The runtime has to be loaded before the first session is created,
+        // because it is bound to the first library that is loaded.
+        ParakeetEngine::load_runtime()?;
         let quantized = match params.quantization {
             QuantizationType::FP32 => false,
             QuantizationType::Int8 => true,

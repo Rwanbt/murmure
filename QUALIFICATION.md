@@ -109,8 +109,9 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | 10 | Global pause/resume shortcut | P0 | TODO | — | — | — | — | — | not started | the implementation exists in the orphaned PR #36 | port it onto the head chain |
 | 11 | STT qualification | P0 | TODO | — | — | — | — | — | not started | — | map the existing engine and cover the mandatory scenarios |
 | 12 | WCAG 2.2 AA audit | P1 | TODO | — | — | — | — | — | not started | — | — |
-| 13 | Dependency audit | P1 | TODO | — | — | — | — | — | not started | — | — |
-| 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `9e6ef81` | — | this document | — | — | — |
+| 13 | Dependency audit | P1 | TODO | “” | “” | “” | “” | “” | not started | “” | “” |
+| 14 | Qualification report | P1 | DONE | `docs/murmure-voice-qualification` | #47 | `9e6ef81` | “” | this document | “” | “” | “” |
+| 15 | The engine does not depend on the graphics stack | P0 | VALIDATING | `feat/tts-pause-resume-hotkey-port` | #50 | - | the runtime is loaded from a verified path | running | the packaged application has to ship the runtime | - | - |
 
 ### 3.1 Defects found and fixed
 
@@ -126,6 +127,7 @@ Status values: `TODO`, `IN_PROGRESS`, `BLOCKED`, `VALIDATING`, `DONE`.
 | A runtime that exited before reading the text was reported as a transport error instead of a generation failure | Medium | CI failure `a_generation_that_produces_no_wave_is_reported` | PR #45 |
 | The ONNX Runtime prebuilt download is not covered by the rust cache, so a dropped connection failed the mandatory Clippy gate | Medium | job `118970407231`, `Peer disconnected` | PR #46 |
 | A duplicated `key:` in a workflow makes GitHub refuse to load it, and PyYAML accepts duplicate keys silently | Medium | three runs failed with no job at all | PR #46, `scripts/validate-workflows.py` |
+| The speech recognition engine pulled the DirectX 12 libraries into the import table of every binary, so a Windows installation without the full graphics stack refused to start the program | High | `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139) when the test binary was launched: `DirectML.dll` needs `D3D12SerializeVersionedRootSignature` from `d3d12.dll`, and the server image does not export it | PR #50, the official CPU-only ONNX Runtime is loaded at runtime and the DirectX dependency is gone |
 
 ---
 
