@@ -253,6 +253,110 @@ fn configure_model_source(command: &mut Command, cache_dir: &Path) {
         .env_remove("HF_HUB_CACHE");
 }
 
+/// How a supervised generation ended.
+enum GenerationOutcome {
+    /// The Pocket TTS process finished successfully.
+    Completed,
+    /// The user explicitly stopped the generation.
+    Stopped,
+    /// The worker channel closed, so the request was abandoned.
+    Cancelled,
+}
+
+/// Run the Pocket TTS binary until it finishes, is stopped or reaches the
+/// generation bound, and report how it ended.
+///
+/// The command is fully supplied by the caller so the supervision can be
+/// exercised without the real runtime.
+fn supervise_generation(
+    binary: &Path,
+    args: &[std::ffi::OsString],
+    text: &str,
+    cache_dir: &Path,
+    rx: &Receiver<Request>,
+    timeout: Duration,
+    mut on_state: impl FnMut(&'static str),
+) -> Result<GenerationOutcome, String> {
+    let mut command = Command::new(binary);
+    configure_model_source(&mut command, cache_dir);
+    on_state("generating");
+    let mut child = command
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "Unable to start Pocket TTS".to_string())?;
+    // Kyutai's --text - reads stdin. Never put document text in argv, where
+    // other processes can inspect it through process listings.
+    let write_result = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Pocket TTS stdin was unavailable".to_string())
+        .and_then(|mut stdin| {
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|_| "Unable to send text to Pocket TTS".to_string())
+        });
+    if let Err(reason) = write_result {
+        // The runtime may have exited before reading the text, for example on
+        // an unusable CPU or a broken model. Report the generation failure
+        // instead of a misleading transport error.
+        let exited = child.try_wait().ok().flatten();
+        let _ = child.kill();
+        let _ = child.wait();
+        if exited.is_some_and(|status| !status.success()) {
+            return Err("Pocket TTS generation failed".into());
+        }
+        return Err(reason);
+    }
+    let started = Instant::now();
+
+    loop {
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Pocket TTS preview timed out; generation was stopped".to_string());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) if !status.success() => {
+                return Err("Pocket TTS generation failed".into());
+            }
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Unable to monitor Pocket TTS".into());
+            }
+        }
+        match rx.recv_timeout(POLL_INTERVAL) {
+            Ok(Request::Stop) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                on_state("stopped");
+                return Ok(GenerationOutcome::Stopped);
+            }
+            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Ok(GenerationOutcome::Cancelled);
+            }
+        }
+    }
+    Ok(GenerationOutcome::Completed)
+}
+
+/// Prove that the generated file is playable audio before it reaches the
+/// audio device, so a missing or corrupted output is reported instead of
+/// being silently swallowed by the decoder.
+fn verify_generated_wave(path: &Path) -> Result<(), String> {
+    let file = File::open(path).map_err(|_| "Pocket TTS produced no WAV".to_string())?;
+    rodio::Decoder::new(file).map_err(|_| "Pocket TTS WAV could not be decoded".to_string())?;
+    Ok(())
+}
+
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
     // A request may have been queued before consent was revoked. Check again
     // in the worker before starting the external model process.
@@ -274,68 +378,20 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     let cache_dir = pocket_tts_model_cache(app)?;
     std::fs::create_dir_all(&cache_dir)
         .map_err(|_| "Unable to create the local TTS model cache".to_string())?;
-    let mut command = Command::new(binary);
-    configure_model_source(&mut command, &cache_dir);
-    emit(app, "generating", None);
-    let mut child = command
-        .args(preview_args(&wave.0, model))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|_| "Unable to start Pocket TTS".to_string())?;
-    // Kyutai's --text - reads stdin. Never put document text in argv, where
-    // other processes can inspect it through process listings.
-    let write_result = child
-        .stdin
-        .take()
-        .ok_or_else(|| "Pocket TTS stdin was unavailable".to_string())
-        .and_then(|mut stdin| {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|_| "Unable to send text to Pocket TTS".to_string())
-        });
-    if let Err(reason) = write_result {
-        let _ = child.kill();
-        let _ = child.wait();
-        return Err(reason);
-    }
-    let started = Instant::now();
-
-    loop {
-        if started.elapsed() >= MAX_GENERATION {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("Pocket TTS preview timed out; generation was stopped".to_string());
-        }
-        match child.try_wait() {
-            Ok(Some(status)) if !status.success() => {
-                return Err("Pocket TTS generation failed".into());
-            }
-            Ok(Some(_)) => break,
-            Ok(None) => {}
-            Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err("Unable to monitor Pocket TTS".into());
-            }
-        }
-        match rx.recv_timeout(POLL_INTERVAL) {
-            Ok(Request::Stop) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                emit(app, "stopped", None);
-                return Ok(());
-            }
-            Ok(_) | Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Ok(());
-            }
-        }
+    match supervise_generation(
+        &binary,
+        &preview_args(&wave.0, model),
+        text,
+        &cache_dir,
+        rx,
+        MAX_GENERATION,
+        |state| emit(app, state, None),
+    )? {
+        GenerationOutcome::Completed => {}
+        GenerationOutcome::Stopped | GenerationOutcome::Cancelled => return Ok(()),
     }
 
+    verify_generated_wave(&wave.0)?;
     let file = File::open(&wave.0).map_err(|_| "Pocket TTS produced no WAV".to_string())?;
     let source =
         rodio::Decoder::new(file).map_err(|_| "Pocket TTS WAV could not be decoded".to_string())?;
@@ -710,6 +766,178 @@ mod tests {
             b"not a cache directory"
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A command that runs for a while, used to exercise the generation
+    /// bound and the user stop without the real Pocket TTS runtime.
+    ///
+    /// The Windows variant is a busy loop inside cmd.exe itself: it never
+    /// spawns a grandchild, so stopping it cannot leave an orphan behind.
+    #[cfg(windows)]
+    fn long_running_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("cmd.exe"),
+            vec![
+                std::ffi::OsString::from("/c"),
+                std::ffi::OsString::from(
+                    "for /L %i in (1,1,100000) do @for /L %j in (1,1,100000) do @rem",
+                ),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn long_running_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("sh"),
+            vec![
+                std::ffi::OsString::from("-c"),
+                std::ffi::OsString::from("sleep 30"),
+            ],
+        )
+    }
+
+    /// A command that consumes the text and then succeeds without producing
+    /// any output file. It must stay alive long enough to accept the text.
+    #[cfg(windows)]
+    fn silent_success_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("cmd.exe"),
+            vec![
+                std::ffi::OsString::from("/c"),
+                std::ffi::OsString::from("more > nul"),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn silent_success_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("sh"),
+            vec![
+                std::ffi::OsString::from("-c"),
+                std::ffi::OsString::from("cat > /dev/null"),
+            ],
+        )
+    }
+
+    /// A command that fails immediately, without reading the text.
+    #[cfg(windows)]
+    fn failing_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("cmd.exe"),
+            vec![
+                std::ffi::OsString::from("/c"),
+                std::ffi::OsString::from("exit 1"),
+            ],
+        )
+    }
+
+    #[cfg(unix)]
+    fn failing_command() -> (PathBuf, Vec<std::ffi::OsString>) {
+        (
+            PathBuf::from("sh"),
+            vec![
+                std::ffi::OsString::from("-c"),
+                std::ffi::OsString::from("exit 1"),
+            ],
+        )
+    }
+
+    #[test]
+    fn a_generation_that_produces_no_wave_is_reported() {
+        let (binary, args) = silent_success_command();
+        let (_sender, receiver) = mpsc::channel();
+        let wave =
+            std::env::temp_dir().join(format!("murmure-no-wave-{}.wav", uuid::Uuid::new_v4()));
+        let outcome = supervise_generation(
+            &binary,
+            &args,
+            "texte",
+            Path::new("cache"),
+            &receiver,
+            Duration::from_secs(30),
+            |_| {},
+        );
+        assert!(matches!(outcome, Ok(GenerationOutcome::Completed)));
+        assert!(
+            verify_generated_wave(&wave).is_err(),
+            "a missing WAV output must be reported"
+        );
+    }
+
+    #[test]
+    fn a_corrupted_wave_output_is_reported() {
+        let wave =
+            std::env::temp_dir().join(format!("murmure-bad-wave-{}.wav", uuid::Uuid::new_v4()));
+        std::fs::write(&wave, b"this is not a RIFF container at all").unwrap();
+        assert!(
+            verify_generated_wave(&wave).is_err(),
+            "a corrupted WAV output must be reported"
+        );
+        std::fs::remove_file(&wave).unwrap();
+    }
+
+    #[test]
+    fn a_generation_that_exceeds_its_bound_is_stopped() {
+        let (binary, args) = long_running_command();
+        let (_sender, receiver) = mpsc::channel();
+        let outcome = supervise_generation(
+            &binary,
+            &args,
+            "texte",
+            Path::new("cache"),
+            &receiver,
+            Duration::from_millis(300),
+            |_| {},
+        );
+        assert!(
+            outcome.is_err(),
+            "a generation that exceeds its bound must be stopped and reported"
+        );
+    }
+
+    #[test]
+    fn a_user_stop_terminates_the_generation() {
+        let (binary, args) = long_running_command();
+        let (sender, receiver) = mpsc::channel();
+        let stopper = sender.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            let _ = stopper.send(Request::Stop);
+        });
+        let outcome = supervise_generation(
+            &binary,
+            &args,
+            "texte",
+            Path::new("cache"),
+            &receiver,
+            Duration::from_secs(30),
+            |_| {},
+        );
+        assert!(
+            matches!(outcome, Ok(GenerationOutcome::Stopped)),
+            "an explicit stop must end the generation instead of failing it"
+        );
+    }
+
+    #[test]
+    fn a_generation_that_fails_immediately_is_reported_as_a_failure() {
+        let (binary, args) = failing_command();
+        let (_sender, receiver) = mpsc::channel();
+        let outcome = supervise_generation(
+            &binary,
+            &args,
+            "texte",
+            Path::new("cache"),
+            &receiver,
+            Duration::from_secs(30),
+            |_| {},
+        );
+        assert!(
+            outcome.is_err(),
+            "a runtime that exits with a failure must be reported as a generation failure"
+        );
     }
 
     #[test]
