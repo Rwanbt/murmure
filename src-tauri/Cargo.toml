@@ -34,7 +34,17 @@ futures-util = "0.3"
 flate2 = "1.1"
 tar = "0.4"
 anyhow = "1.0"
-ort = { version = "=2.0.0-rc.11", features = ["download-binaries"] }
+# The ONNX Runtime is loaded at runtime instead of being linked at build
+# time. The prebuilt distribution that the build script downloads on Windows
+# is compiled with the DirectML execution provider, so it drags the DirectX 12
+# libraries into the import table of every binary that links it. The library
+# DirectML.dll needs the entry point D3D12SerializeVersionedRootSignature
+# from d3d12.dll, and a Windows installation whose d3d12.dll does not export
+# it refuses to start the program with STATUS_ENTRYPOINT_NOT_FOUND, even
+# though the speech recognition is a pure CPU workload. The official CPU-only
+# distribution has no DirectX dependency at all, and it is loaded from a
+# verified path instead.
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "tracing", "tls-native", "load-dynamic"] }
 ndarray = "0.17.2"
 regex = "1.12.2"
 thiserror = "2.0.18"
