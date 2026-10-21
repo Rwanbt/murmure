@@ -84,7 +84,7 @@ not. **BLOCKED** means the environment cannot produce the evidence.
 | Screen structure | **PROVEN** (133 screens) | shared | shared | shared |
 | Screen-reader reading | **BLOCKED** — needs a real AT | **BLOCKED** | **BLOCKED** | **BLOCKED** |
 | Model lifecycle | **PROVEN** for the states the catalog exposes | **PROVEN** for install/verify | **PROVEN** for install/verify | pinned, not exercised |
-| Performance | not measured | not measured | not measured | not measured |
+| Performance | **MEASURED** — the round trip prints the load time, the transcription time and the real time factor (commit `577a0dd`) | same, measured on the Windows runner only | not measured | not measured |
 
 ## 5. Gates
 
@@ -113,7 +113,7 @@ are `BLOCKED`, with the reason and a manual protocol recorded in
 5. **Two JavaScript advisories are accepted**, each with a written reason and a
    condition that would invalidate it.
 6. **Eight RustSec advisories are accepted**, each with a written reason.
-7. **Performance is unmeasured.** No baseline, no budget.
+7. **Performance is measured once, not budgeted.** The round trip prints the load time and the real time factor of the pinned model on the Windows runner, with a loose bound that only catches a pathological regression. There is no baseline across versions and no budget for the interface.
 
 ## 7. Verdict
 
