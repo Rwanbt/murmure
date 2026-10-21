@@ -130,25 +130,25 @@ The engine was already present in Murmure. It was mapped, not rebuilt.
 
 | Scenario | Status | Evidence |
 | --- | --- | --- |
-| First recording | **PROVEN** | the round trip transcribes a real recording |
-| Repeated recording | **PROVEN** | a finished session can be claimed again (unit test) |
-| Manual stop | **PROVEN** | the session claim and the stop path |
-| Short recording | **PROVEN** | chunking unit tests |
-| Long recording within the limits | **PROVEN** | chunking unit tests |
-| Silence | **PROVEN** | 10 VAD unit tests |
-| No audio input | **PROVEN** | the recorder reports `InitFailed`, the temporary file is removed and the user is notified |
-| Microphone unavailable | **PROVEN** | same path as no audio input |
+| First recording | **PARTIAL** | the capture device and the transcription are proven on real hardware (§6.1.1); the shortcut-driven flow that starts and stops a recording through the interface is not |
+| Repeated recording | **PARTIAL** | `a_finished_session_can_be_claimed_again` proves a finished session can be claimed again; no real recording was repeated |
+| Manual stop | **PARTIAL** | the superseded branch releases the claim, and the claim has unit tests; no real two-second stop was performed |
+| Short recording | **PARTIAL** | `audio::chunking` carries 19 tests over the windowing; no real short recording was made |
+| Long recording within the limits | **PARTIAL** | the same 19 chunking tests; no real long recording was made |
+| Silence | **PROVEN at the engine level** | `real_silence_is_not_transcribed` returns an empty text for a real five second capture of this machine's microphone (peak 2.2 % of full scale) and for the deterministic fixture. The application adds the voice activity gate on top, covered by 10 unit tests |
+| No audio input | **NOT TESTED** | the `InitFailed` branch of `audio.rs` calls `notify_recording_error`, and `audio.rs` carries no test. It has never been exercised on a machine without an input device |
+| Microphone unavailable | **NOT TESTED** | same branch, same reason |
 | Permission refused | **MANUAL** | needs the operating system permission prompt |
 | Permission revoked | **MANUAL** | same |
-| Device change | **MANUAL** | needs two real devices |
-| System interruption | **PARTIAL** | the session claim survives a competing trigger; a full interruption needs a real device |
-| French transcription | **PROVEN** | the round trip asserts real French words |
-| Offline transcription | **PROVEN** | the model and the tokenizer are local; no network call in the path |
-| Model absent | **PROVEN** | `get_model_path` reports the model as missing |
-| Model corrupted | **PARTIAL** | the ONNX session fails to load; not exercised by a test |
-| Restart after a failure | **PROVEN** | the session claim is released on every error path |
-| Several rapid triggers | **PROVEN** | the atomic session claim (PR #51) |
-| Concurrent shortcuts | **PROVEN** | the atomic claim, exactly one of two concurrent claims wins |
+| Device change | **MANUAL** | needs two real devices and a change while the application runs |
+| System interruption | **PARTIAL** | the session claim survives a competing trigger; a full sleep and wake needs a real device |
+| French transcription | **PROVEN** | job `119192646552` and a local run print `"bonjour ceci est un essai de synthese vocale locale"` for a real recording. The assertion itself requires alphabetic output, not specific words |
+| Offline transcription | **NOT TESTED** | the model and the tokenizer are local and the code path makes no network call, but no run was made with the network disabled |
+| Model absent | **NOT TESTED** | the path exists; no test asserts what it reports |
+| Model corrupted | **NOT TESTED** | the ONNX session would fail to load; no test exercises it |
+| Restart after a failure | **PARTIAL** | the claim is released on the error paths; no restart was performed after a real failure |
+| Several rapid triggers | **PROVEN** | `a_second_trigger_cannot_claim_a_running_session` and `exactly_one_of_two_concurrent_claims_wins` |
+| Concurrent shortcuts | **PROVEN** | the same two tests: exactly one of two concurrent claims wins |
 
 ---
 
@@ -280,8 +280,12 @@ Windows machine with a visible desktop, a speaker and a microphone.
 
 ### 6.1 Microphone and speech recognition
 
-The continuous integration never touches a microphone, so none of these
-scenarios is proven. Run them on a Windows machine with an input device.
+The continuous integration never touches a microphone, so the interface
+scenarios below still need a human at a desktop with an input device. One
+part, however, has been executed for real and is recorded in §6.1.1: the
+capture path of this machine and the transcription of audio that came
+through the air rather than from a reference file.
+
 Record the outcome of each one.
 
 | # | Scenario | What to do | What must happen |
@@ -301,6 +305,57 @@ Record the outcome of each one.
 | 13 | Restart after a failure | After any failure above, restart the application and record again | The first recording after the restart succeeds |
 | 14 | Rapid triggers | Press the recording shortcut four times quickly | Exactly one recording runs; the running audio is never discarded |
 | 15 | Concurrent shortcuts | Press the recording shortcut and a text-to-speech shortcut together | The two do not interleave: either one is refused with a message, or they run one after the other |
+
+#### 6.1.1 Executed: real capture device and real transcription
+
+This part does not need the interface and was executed, so it is evidence
+rather than protocol.
+
+- Machine: Windows desktop, Realtek High Definition Audio. Two capture
+  devices are exposed, and the Windows multimedia registry reports
+  `Microphone Array` and `Headset` as active (`DeviceState = 1`).
+- Capture: `ffmpeg -f dshow` opened
+  `Microphone Array (Intel® Smart Sound Technology for Digital Microphones)`
+  and recorded 9 s at 16 kHz mono. The measured file holds 143 792 frames,
+  8.99 s, peak 8 008 (24.4 % of full scale), RMS 628. A device that never
+  opened would have produced no file; a muted path would have produced a
+  peak near zero.
+- Signal: while the capture ran, the speaker played the French sample that
+  Pocket TTS generated on this same machine (`french-smoke.wav`, 3.64 s,
+  24 000 Hz, peak 10 268) twice. The audio therefore travelled through the
+  air, not through a cable or a shared buffer.
+- Transcription by the pinned engine, run from the local test binary:
+  `engine load: 1.90 s, transcription: 1.11 s for 8.99 s of audio, real time
+  factor 0.123`, output `"en moche chris est dans lessai de chante du local
+  local"`. The words are recognisable and corrupted in the way a far-field
+  laptop microphone corrupts a speaker; the point is that real captured
+  audio reached the real model and produced real words.
+- The same binary, given the clean generated sample, returned
+  `"bonjour ceci est un essai de synthese vocale locale"` after loading in
+  2.08 s and transcribing 3.64 s in 0.76 s (real time factor 0.208), which
+  reproduces the result the job `119192646552` reported.
+
+What this proves: the capture device opens, delivers samples, and its audio
+is transcribed by the pinned model on this hardware. What it does not
+prove: every row above, because those rows drive the interface and change
+the device or the permission while the application runs.
+
+#### 6.1.2 Executed: silence produces no words
+
+The opposite failure is worse than a missing transcription: a model that
+turns room noise into a sentence would write text nobody said.
+
+- Five seconds were captured from the same device with no sound played.
+  The file holds 79 776 frames, peak 736 (2.2 % of full scale), RMS 38,
+  which is room hiss rather than speech.
+- The engine returned an empty string for it, and the guard in the test
+  refuses a fixture that carries speech (`peak < 0.05`), so the test cannot
+  silently assert the opposite of its claim.
+- The counter-test is now permanent: `real_silence_is_not_transcribed` runs
+  in the round-trip job against a fixture generated with a fixed seed
+  (`scripts/make-silence-wav.py`), because a runner has no microphone. The
+  local run above is the hardware evidence; the job is the regression gate.
+
 
 ### 6.2 Screen reader
 

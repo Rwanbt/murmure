@@ -318,9 +318,28 @@ jobs:
                       if ($output -notmatch '1 passed') {
                           throw 'The real French round trip ran no test, so it proved nothing'
                       }
+
+                      # The counter-test. A model that turns room noise into a
+                      # sentence fills the user's history with words nobody said.
+                      # A runner has no microphone, so the fixture is generated
+                      # with a fixed seed; a local run used a real capture.
+                      $silence = Join-Path $destination 'silence.wav'
+                      python ./scripts/make-silence-wav.py $silence
+                      $env:MURMURE_STT_SILENCE_WAV = $silence
+                      $silenceOutput = cargo test --manifest-path src-tauri/Cargo.toml --lib engine::real_audio_tests::real_silence_is_not_transcribed -- --exact --ignored --nocapture 2>&1 | Out-String
+                      $silenceExit = $LASTEXITCODE
+                      Write-Output $silenceOutput
+                      if ($silenceExit -ne 0) {
+                          throw 'The silence counter-test failed: the engine produced words for a recording that holds no speech'
+                      }
+                      if ($silenceOutput -notmatch '1 passed') {
+                          throw 'The silence counter-test ran no test, so it proved nothing'
+                      }
                   } finally {
                       Remove-Item -LiteralPath $wav -Force -ErrorAction SilentlyContinue
+                      Remove-Item -LiteralPath $silence -Force -ErrorAction SilentlyContinue
                       Remove-Item Env:MURMURE_STT_FIXTURE_WAV -ErrorAction SilentlyContinue
+                      Remove-Item Env:MURMURE_STT_SILENCE_WAV -ErrorAction SilentlyContinue
                   }
 
     # The frontend tree was never audited, so a vulnerable transitive package
