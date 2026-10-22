@@ -37,12 +37,29 @@ interface ModelStatus {
     repository: string;
     directory: string;
     license: string;
+    // Voice the language speaks with when the user has not chosen one.
+    defaultVoice: string;
+    // Every voice the language publishes.
+    voices: string[];
     state: ModelState;
     present: boolean;
     offlineReady: boolean;
     revision: string | null;
     localBytes: number | null;
 }
+
+// The name of every language Pocket TTS publishes. The name is the name of
+// the language itself, translated by the interface instead of being written
+// in the source.
+const LANGUAGE_NAMES: Record<string, string> = {
+    english: 'English',
+    french: 'Français',
+    german: 'Deutsch',
+    portuguese: 'Português',
+    italian: 'Italiano',
+    spanish: 'Español',
+    dutch: 'Nederlands',
+};
 
 const formatMegabytes = (bytes: number | null) =>
     bytes === null ? null : `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
@@ -52,7 +69,8 @@ export const PocketTts = () => {
     const [state, setState] = useState<PreviewState>('idle');
     const [detail, setDetail] = useState<string | null>(null);
     const [speechText, setSpeechText] = useState('');
-    const [model, setModel] = useState('french');
+    const [language, setLanguage] = useState('');
+    const [voice, setVoice] = useState('');
     const [volume, setVolume] = useState(80);
     const [downloadApproved, setDownloadApproved] = useState(false);
     const [consentBusy, setConsentBusy] = useState(false);
@@ -65,10 +83,13 @@ export const PocketTts = () => {
 
     useEffect(() => {
         let active = true;
-        void invoke<{ tts_model: string; tts_volume: number; tts_model_download_approved: boolean }>('get_all_settings')
+        void invoke<{ tts_model: string; tts_voice: string; tts_volume: number; tts_model_download_approved: boolean }>('get_all_settings')
             .then((settings) => {
                 if (!active) return;
-                setModel(settings.tts_model === 'french_24l' ? 'french_24l' : 'french');
+                // The language and the voice come from the settings, so the
+                // page shows what the application actually speaks.
+                setLanguage(settings.tts_model);
+                setVoice(settings.tts_voice);
                 setVolume(Math.max(0, Math.min(100, settings.tts_volume)));
                 setDownloadApproved(settings.tts_model_download_approved === true);
             })
@@ -94,7 +115,7 @@ export const PocketTts = () => {
             .then((statuses) => { if (active) setModelStatuses(statuses); })
             .catch(() => { if (active) setModelStatuses([]); });
         return () => { active = false; };
-    }, [runtimeStatus, model]);
+    }, [runtimeStatus, language]);
 
     useEffect(() => {
         let cancelled = false;
@@ -148,10 +169,23 @@ export const PocketTts = () => {
         }
     };
 
-    const updateModel = async (next: string) => {
+    const updateLanguage = async (next: string) => {
         try {
-            await invoke('set_tts_model', { model: next });
-            setModel(next);
+            // The backend selects the default voice of the language and
+            // returns it, so the page and the application always agree on
+            // what is spoken.
+            const nextVoice = await invoke<string>('set_tts_model', { model: next });
+            setLanguage(next);
+            setVoice(nextVoice);
+        } catch (error) {
+            setDetail(translateTtsError(String(error)));
+        }
+    };
+
+    const updateVoice = async (next: string) => {
+        try {
+            await invoke('set_tts_voice', { voice: next });
+            setVoice(next);
         } catch (error) {
             setDetail(translateTtsError(String(error)));
         }
@@ -241,6 +275,21 @@ export const PocketTts = () => {
 
     const busy = state === 'generating' || state === 'playing' || state === 'paused';
 
+    // The languages and the voices come from the backend catalog, so the
+    // interface never offers a combination the runtime cannot speak.
+    const languageName = (id: string) => t(LANGUAGE_NAMES[id] ?? id);
+    const languageOptions = modelStatuses.length > 0
+        ? modelStatuses.map((status) => status.id)
+        : language ? [language] : [];
+    const selectedStatus = modelStatuses.find((status) => status.id === language);
+    // The selected voice is always part of the list, even before the catalog
+    // is loaded.
+    const voiceOptions = selectedStatus
+        ? selectedStatus.voices.includes(voice)
+            ? selectedStatus.voices
+            : [voice, ...selectedStatus.voices].filter((id) => id.length > 0)
+        : voice ? [voice] : [];
+
     return (
         <ExtensionPageLayout colorScheme="standard" isActive={busy}>
             <ExtensionHeader
@@ -248,12 +297,12 @@ export const PocketTts = () => {
                 title={t('Text to Speech')}
                 colorScheme="standard"
                 titleTestId="pocket-tts-title"
-                subtitle={t('Preview a French voice generated locally on the CPU.')}
+                subtitle={t('Preview a voice generated locally on the CPU.')}
             />
 
             <section className="rounded-lg border border-border p-5 space-y-4" data-testid="pocket-tts-preview">
                 <p className="text-sm text-muted-foreground">
-                    {t('Pocket TTS standalone must be installed next to Murmure. The first generation may download French model weights.')}
+                    {t('Pocket TTS standalone must be installed next to Murmure. The first generation may download the model weights of the selected language.')}
                 </p>
                 {runtimeStatus && !runtimeStatus.cpuCompatible && (
                     <p role="alert" className="text-sm text-red-400">
@@ -320,13 +369,13 @@ export const PocketTts = () => {
                     </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                    {t('Installing the runtime downloads one pinned Kyutai executable. French model downloads require separate consent below.')}
+                    {t('Installing the runtime downloads one pinned Kyutai executable. Model downloads require separate consent below.')}
                 </p>
 
                 <div role="status" aria-live="polite" data-testid="pocket-tts-status">
                     {state === 'idle' && t('Ready')}
                     {state === 'generating' && t('Generating audio on CPU…')}
-                    {state === 'playing' && t('Playing French preview')}
+                    {state === 'playing' && t('Playing preview')}
                     {state === 'paused' && t('Paused')}
                     {state === 'stopped' && t('Stopped')}
                     {state === 'error' && t('Pocket TTS error')}
@@ -349,11 +398,11 @@ export const PocketTts = () => {
                             data-testid="pocket-tts-download-approval"
                             className="mt-1"
                         />
-                        <span>{t('I authorize Pocket TTS to download its French model and voice files when I request speech. This permission stays on this device only.')}</span>
+                        <span>{t('I authorize Pocket TTS to download its model and voice files when I request speech. This permission stays on this device only.')}</span>
                     </label>
                     <p className="text-xs text-muted-foreground">
                         <a className="underline" href="https://huggingface.co/kyutai/pocket-tts-without-voice-cloning" target="_blank" rel="noopener noreferrer">
-                            {t('Kyutai French model — CC BY 4.0')}
+                            {t('Kyutai Pocket TTS model — CC BY 4.0')}
                         </a>
                         {' Â· '}
                         {t('Turning this off blocks future playback; it does not delete files already cached locally.')}
@@ -368,19 +417,35 @@ export const PocketTts = () => {
                 >
                     {clearingCache ? t('Deleting downloaded Pocket TTS models…') : t('Delete downloaded Pocket TTS models')}
                 </button>
-                <label htmlFor="pocket-tts-model" className="block text-sm font-medium">
-                    {t('French speech model')}
+                <label htmlFor="pocket-tts-language" className="block text-sm font-medium">
+                    {t('Speech language')}
                 </label>
                 <select
-                    id="pocket-tts-model"
-                    value={model}
+                    id="pocket-tts-language"
+                    value={language}
                     disabled={busy}
-                    onChange={(event) => void updateModel(event.target.value)}
+                    onChange={(event) => void updateLanguage(event.target.value)}
                     className="w-full rounded-md border border-border bg-background p-2 text-sm"
-                    data-testid="pocket-tts-model"
+                    data-testid="pocket-tts-language"
                 >
-                    <option value="french">{t('French — efficient CPU model')}</option>
-                    <option value="french_24l">{t('French — 24 layers (larger experimental model)')}</option>
+                    {languageOptions.map((id) => (
+                        <option key={id} value={id}>{languageName(id)}</option>
+                    ))}
+                </select>
+                <label htmlFor="pocket-tts-voice" className="block text-sm font-medium">
+                    {t('Voice')}
+                </label>
+                <select
+                    id="pocket-tts-voice"
+                    value={voice}
+                    disabled={busy}
+                    onChange={(event) => void updateVoice(event.target.value)}
+                    className="w-full rounded-md border border-border bg-background p-2 text-sm"
+                    data-testid="pocket-tts-voice"
+                >
+                    {voiceOptions.map((id) => (
+                        <option key={id} value={id}>{id}</option>
+                    ))}
                 </select>
                 <label htmlFor="pocket-tts-volume" className="block text-sm font-medium">
                     {t('Playback volume')}: {volume}%
@@ -400,7 +465,7 @@ export const PocketTts = () => {
                     data-testid="pocket-tts-volume"
                 />
                 <p className="text-xs text-muted-foreground">
-                    {t('Changes apply to the next playback. Larger models may require more RAM and a separate download.')}
+                    {t('Changes apply to the next playback. Every language has its own download, and every voice of the catalog can be used with every language.')}
                 </p>
                 {modelStatuses.length > 0 && (
                     <ul className="space-y-1 text-xs text-muted-foreground" data-testid="pocket-tts-models">
@@ -408,7 +473,7 @@ export const PocketTts = () => {
                             const size = formatMegabytes(status.localBytes);
                             return (
                                 <li key={status.id}>
-                                    <span className="font-medium">{status.id}</span>
+                                    <span className="font-medium">{languageName(status.id)}</span>
                                     {' Â· '}
                                     {status.state === 'ready' && t('Ready, usable offline')}
                                     {status.state === 'in_use' && t('In use')}
@@ -437,7 +502,7 @@ export const PocketTts = () => {
                     onChange={(event) => setSpeechText(event.target.value)}
                     className="w-full rounded-md border border-border bg-background p-3 text-sm"
                     data-testid="pocket-tts-text"
-                    placeholder={t('Type a French sentence to read locally…')}
+                    placeholder={t('Type text to read locally…')}
                 />
                 <p className="text-xs text-muted-foreground">
                     {t('Only text you explicitly submit is synthesized. Code blocks and likely credential lines are omitted.')}
@@ -459,7 +524,7 @@ export const PocketTts = () => {
                         onClick={() => void run('pocket_tts_preview')}
                         data-testid="pocket-tts-play"
                     >
-                        {t('Test French voice')}
+                        {t('Test voice')}
                     </button>
                     <button
                         type="button"

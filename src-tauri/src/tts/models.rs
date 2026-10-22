@@ -9,10 +9,12 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-/// Official source of the French weights.
-const FRENCH_REPOSITORY: &str = "kyutai/pocket-tts-without-voice-cloning";
+use crate::settings::{SUPPORTED_TTS_MODELS, SUPPORTED_TTS_VOICES};
+
+/// Official source of the weights.
+const POCKET_TTS_REPOSITORY: &str = "kyutai/pocket-tts-without-voice-cloning";
 /// License declared by the model card of the repository.
-const FRENCH_LICENSE: &str = "CC BY 4.0";
+const POCKET_TTS_LICENSE: &str = "CC BY 4.0";
 
 /// A model the pinned Pocket TTS CLI can synthesize with.
 #[derive(Clone, Serialize)]
@@ -26,23 +28,92 @@ pub struct PocketTtsModel {
     pub directory: &'static str,
     /// License of the weights.
     pub license: &'static str,
+    /// Voice the model speaks with when the user has not chosen one.
+    pub default_voice: &'static str,
+    /// Voices published for this language.
+    pub voices: &'static [&'static str],
 }
 
-/// The models the pinned CLI supports for French speech.
-pub const FRENCH_MODELS: [PocketTtsModel; 2] = [
+/// The CPU models the pinned CLI supports, one per published language.
+///
+/// Only the light variants are catalogued: the heavier ones need more RAM
+/// than the machines Murmure targets, and the user chooses the voice, not
+/// the size of the model.
+pub const POCKET_TTS_MODELS: [PocketTtsModel; 7] = [
     PocketTtsModel {
-        id: "french",
-        repository: FRENCH_REPOSITORY,
-        directory: "languages/french",
-        license: FRENCH_LICENSE,
+        id: SUPPORTED_TTS_MODELS[0],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/english",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "alba",
+        voices: &SUPPORTED_TTS_VOICES,
     },
     PocketTtsModel {
-        id: "french_24l",
-        repository: FRENCH_REPOSITORY,
-        directory: "languages/french_24l",
-        license: FRENCH_LICENSE,
+        id: SUPPORTED_TTS_MODELS[1],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/french",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "estelle",
+        voices: &SUPPORTED_TTS_VOICES,
+    },
+    PocketTtsModel {
+        id: SUPPORTED_TTS_MODELS[2],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/german",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "juergen",
+        voices: &SUPPORTED_TTS_VOICES,
+    },
+    PocketTtsModel {
+        id: SUPPORTED_TTS_MODELS[3],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/portuguese",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "rafael",
+        voices: &SUPPORTED_TTS_VOICES,
+    },
+    PocketTtsModel {
+        id: SUPPORTED_TTS_MODELS[4],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/italian",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "giovanni",
+        voices: &SUPPORTED_TTS_VOICES,
+    },
+    PocketTtsModel {
+        id: SUPPORTED_TTS_MODELS[5],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/spanish",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "lola",
+        voices: &SUPPORTED_TTS_VOICES,
+    },
+    PocketTtsModel {
+        id: SUPPORTED_TTS_MODELS[6],
+        repository: POCKET_TTS_REPOSITORY,
+        directory: "languages/dutch",
+        license: POCKET_TTS_LICENSE,
+        default_voice: "alba",
+        voices: &SUPPORTED_TTS_VOICES,
     },
 ];
+
+/// The sentence spoken when the user asks for a preview.
+///
+/// Every language gets its own sentence, so a preview proves that the
+/// selected language is the one that is actually spoken.
+pub fn preview_text(language: &str) -> &'static str {
+    match language {
+        "english" => "Hello! This is the local Murmure text to speech preview.",
+        "french" => "Bonjour ! Voici l'aperçu local de la synthèse vocale de Murmure.",
+        "german" => "Hallo! Dies ist die lokale Sprachausgabe von Murmure.",
+        "portuguese" => "Olá! Esta é a pré-visualização local da voz do Murmure.",
+        "italian" => "Ciao! Questa è l'anteprima locale della sintesi vocale di Murmure.",
+        "spanish" => "¡Hola! Esta es la vista previa local de la voz de Murmure.",
+        "dutch" => "Hallo! Dit is de lokale stemvoorbeeldweergave van Murmure.",
+        _ => "Hello! This is the local Murmure text to speech preview.",
+    }
+}
 
 /// Lifecycle state of a model in Murmure's own cache.
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -75,6 +146,10 @@ pub struct PocketTtsModelStatus {
     pub directory: &'static str,
     /// License of the weights.
     pub license: &'static str,
+    /// Voice the model speaks with when the user has not chosen one.
+    pub default_voice: &'static str,
+    /// Voices published for this language.
+    pub voices: &'static [&'static str],
     /// Lifecycle state.
     pub state: ModelState,
     /// Whether the weights are present in Murmure's own model cache.
@@ -227,7 +302,7 @@ fn download_is_unfinished(repository: &Path) -> bool {
 ///
 /// `in_use` lists the model currently being synthesized, if any.
 pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelStatus> {
-    FRENCH_MODELS
+    POCKET_TTS_MODELS
         .iter()
         .map(|model| {
             let repository = repository_cache_dir(cache, model.repository);
@@ -244,14 +319,23 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
                 ModelState::NotInstalled
             } else if in_use == Some(model.id) {
                 ModelState::InUse
-            } else if download_is_unfinished(&repository) {
-                ModelState::Downloading
             } else if !located
                 .as_ref()
                 .is_some_and(|(weights, _)| weights_are_complete(weights))
             {
-                ModelState::Corrupted
+                // The weights of this language are incomplete. Every
+                // language shares one repository, so an unfinished blob can
+                // belong to another language: it only proves that this
+                // download is running when this language is the incomplete
+                // one.
+                if download_is_unfinished(&repository) {
+                    ModelState::Downloading
+                } else {
+                    ModelState::Corrupted
+                }
             } else {
+                // The weights of this language are complete, so the download
+                // of another language cannot make it unusable.
                 ModelState::Ready
             };
             // A partial or unreadable model is not usable without a network,
@@ -262,6 +346,8 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
                 repository: model.repository,
                 directory: model.directory,
                 license: model.license,
+                default_voice: model.default_voice,
+                voices: model.voices,
                 state,
                 present,
                 offline_ready,
@@ -276,12 +362,45 @@ pub fn model_statuses(cache: &Path, in_use: Option<&str>) -> Vec<PocketTtsModelS
 mod tests {
     use super::*;
 
+    /// The languages Parakeet TDT 0.6B v3 transcribes, as the model card
+    /// lists them: Bulgarian, Croatian, Czech, Danish, Dutch, English,
+    /// Estonian, Finnish, French, German, Greek, Hungarian, Italian,
+    /// Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Russian,
+    /// Slovak, Slovenian, Spanish, Swedish and Ukrainian.
+    const PARAKEET_LANGUAGES: [&str; 25] = [
+        "bulgarian",
+        "croatian",
+        "czech",
+        "danish",
+        "dutch",
+        "english",
+        "estonian",
+        "finnish",
+        "french",
+        "german",
+        "greek",
+        "hungarian",
+        "italian",
+        "latvian",
+        "lithuanian",
+        "maltese",
+        "polish",
+        "portuguese",
+        "romanian",
+        "russian",
+        "slovak",
+        "slovenian",
+        "spanish",
+        "swedish",
+        "ukrainian",
+    ];
+
     fn empty_cache() -> PathBuf {
         std::env::temp_dir().join(format!("murmure-model-test-{}", uuid::Uuid::new_v4()))
     }
 
     fn write_weights(cache: &Path, revision: &str, directory: &str) {
-        let weights = repository_cache_dir(cache, FRENCH_REPOSITORY)
+        let weights = repository_cache_dir(cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join(revision)
             .join(directory);
@@ -289,25 +408,109 @@ mod tests {
         std::fs::write(weights.join("model.safetensors"), b"weights").unwrap();
     }
 
+    /// The status of one language, so a test never depends on the order of
+    /// the catalog.
+    fn status_of<'a>(statuses: &'a [PocketTtsModelStatus], id: &str) -> &'a PocketTtsModelStatus {
+        statuses
+            .iter()
+            .find(|status| status.id == id)
+            .unwrap_or_else(|| panic!("{id} is missing from the catalog"))
+    }
+
     #[test]
     fn the_catalog_states_the_official_repository_and_license() {
-        assert_eq!(FRENCH_MODELS.len(), 2);
-        for model in FRENCH_MODELS.iter() {
+        assert_eq!(POCKET_TTS_MODELS.len(), 7);
+        for model in POCKET_TTS_MODELS.iter() {
             assert_eq!(model.repository, "kyutai/pocket-tts-without-voice-cloning");
             assert_eq!(model.license, "CC BY 4.0");
-            assert!(model.directory.starts_with("languages/"));
+            assert_eq!(
+                model.directory,
+                format!("languages/{}", model.id),
+                "the weights of a language live in its own directory"
+            );
         }
-        assert_eq!(FRENCH_MODELS[0].id, "french");
-        assert_eq!(FRENCH_MODELS[0].directory, "languages/french");
-        assert_eq!(FRENCH_MODELS[1].id, "french_24l");
-        assert_eq!(FRENCH_MODELS[1].directory, "languages/french_24l");
+        assert_eq!(POCKET_TTS_MODELS[1].id, "french");
+        assert_eq!(POCKET_TTS_MODELS[1].directory, "languages/french");
+    }
+
+    /// The catalog must cover exactly the languages the transcription model
+    /// understands, so a language chosen for the synthesis is always a
+    /// language Murmure can transcribe.
+    #[test]
+    fn every_catalogued_language_is_also_transcribed_by_parakeet() {
+        for model in POCKET_TTS_MODELS.iter() {
+            assert!(
+                PARAKEET_LANGUAGES.contains(&model.id),
+                "{} is not one of the 25 Parakeet languages",
+                model.id
+            );
+        }
+        assert_eq!(PARAKEET_LANGUAGES.len(), 25);
+    }
+
+    #[test]
+    fn every_language_publishes_every_voice() {
+        for model in POCKET_TTS_MODELS.iter() {
+            assert_eq!(
+                model.voices.len(),
+                27,
+                "{} does not publish the whole voice catalog",
+                model.id
+            );
+            assert!(
+                model.voices.contains(&model.default_voice),
+                "the default voice of {} is not in its own catalog",
+                model.id
+            );
+            for voice in [
+                "alba", "daan", "estelle", "giovanni", "juergen", "lola", "rafael",
+            ] {
+                assert!(
+                    model.voices.contains(&voice),
+                    "{} does not publish {voice}",
+                    model.id
+                );
+            }
+        }
+    }
+
+    /// The catalog and the settings must name the same default voice, or the
+    /// interface would show a voice the application does not speak with.
+    #[test]
+    fn the_catalog_and_the_settings_agree_on_the_default_voice() {
+        for model in POCKET_TTS_MODELS.iter() {
+            assert_eq!(
+                model.default_voice,
+                crate::settings::default_tts_voice(model.id),
+                "{} has two different default voices",
+                model.id
+            );
+        }
+    }
+
+    /// The catalog must cover exactly the languages of the settings, so a
+    /// language the user can select is always a language that can be
+    /// downloaded.
+    #[test]
+    fn the_catalog_covers_every_language_of_the_settings() {
+        let catalogued: Vec<&str> = POCKET_TTS_MODELS.iter().map(|model| model.id).collect();
+        assert_eq!(catalogued, crate::settings::SUPPORTED_TTS_MODELS.to_vec());
+    }
+
+    #[test]
+    fn every_language_speaks_a_preview_in_its_own_language() {
+        for model in POCKET_TTS_MODELS.iter() {
+            let text = preview_text(model.id);
+            assert!(!text.is_empty(), "{} has no preview sentence", model.id);
+        }
+        assert_ne!(preview_text("english"), preview_text("french"));
     }
 
     #[test]
     fn an_absent_cache_reports_every_model_as_not_installed() {
         let cache = empty_cache();
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses.len(), 2);
+        assert_eq!(statuses.len(), 7);
         for status in statuses {
             assert_eq!(status.state, ModelState::NotInstalled);
             assert!(!status.present);
@@ -323,14 +526,12 @@ mod tests {
         let cache = empty_cache();
         write_weights(&cache, "abc123", "languages/french");
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Ready);
-        assert!(statuses[0].present);
-        assert!(statuses[0].offline_ready);
-        assert_eq!(statuses[0].revision.as_deref(), Some("abc123"));
-        assert_eq!(statuses[0].local_bytes, Some(7));
-        // The 24 layer model was not downloaded.
-        assert_eq!(statuses[1].state, ModelState::NotInstalled);
-        assert!(!statuses[1].present);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Ready);
+        assert!(french.present);
+        assert!(french.offline_ready);
+        assert_eq!(french.revision.as_deref(), Some("abc123"));
+        assert_eq!(french.local_bytes, Some(7));
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -339,8 +540,11 @@ mod tests {
         let cache = empty_cache();
         write_weights(&cache, "abc123", "languages/french");
         let statuses = model_statuses(&cache, Some("french"));
-        assert_eq!(statuses[0].state, ModelState::InUse);
-        assert_eq!(statuses[1].state, ModelState::NotInstalled);
+        assert_eq!(status_of(&statuses, "french").state, ModelState::InUse);
+        assert_eq!(
+            status_of(&statuses, "english").state,
+            ModelState::NotInstalled
+        );
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -354,7 +558,7 @@ mod tests {
     fn several_snapshots_are_not_ambiguous_when_only_one_carries_the_weights() {
         let cache = empty_cache();
         write_weights(&cache, "weights", "languages/french");
-        let repository = repository_cache_dir(&cache, FRENCH_REPOSITORY);
+        let repository = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY);
 
         let tokenizer = repository
             .join("snapshots")
@@ -371,9 +575,10 @@ mod tests {
         std::fs::write(voice.join("estelle.safetensors"), b"voice").unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Ready);
-        assert!(statuses[0].offline_ready);
-        assert_eq!(statuses[0].revision.as_deref(), Some("weights"));
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Ready);
+        assert!(french.offline_ready);
+        assert_eq!(french.revision.as_deref(), Some("weights"));
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -386,7 +591,7 @@ mod tests {
     fn two_weight_snapshots_resolve_to_the_largest() {
         let cache = empty_cache();
         write_weights(&cache, "small", "languages/french");
-        let bigger = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+        let bigger = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join("bigger")
             .join("languages/french");
@@ -394,10 +599,11 @@ mod tests {
         std::fs::write(bigger.join("model.safetensors"), vec![0_u8; 4096]).unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Ready);
-        assert!(statuses[0].present);
-        assert_eq!(statuses[0].revision.as_deref(), Some("bigger"));
-        assert_eq!(statuses[0].local_bytes, Some(4096));
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Ready);
+        assert!(french.present);
+        assert_eq!(french.revision.as_deref(), Some("bigger"));
+        assert_eq!(french.local_bytes, Some(4096));
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -408,7 +614,7 @@ mod tests {
     #[test]
     fn an_empty_weight_file_is_never_reported_as_ready() {
         let cache = empty_cache();
-        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+        let weights = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join("abc123")
             .join("languages/french");
@@ -416,9 +622,10 @@ mod tests {
         std::fs::write(weights.join("model.safetensors"), b"").unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Corrupted);
-        assert!(statuses[0].present);
-        assert!(!statuses[0].offline_ready);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Corrupted);
+        assert!(french.present);
+        assert!(!french.offline_ready);
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -427,15 +634,16 @@ mod tests {
     #[test]
     fn an_empty_weights_directory_is_never_reported_as_ready() {
         let cache = empty_cache();
-        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+        let weights = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join("abc123")
             .join("languages/french");
         std::fs::create_dir_all(&weights).unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Corrupted);
-        assert!(!statuses[0].offline_ready);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Corrupted);
+        assert!(!french.offline_ready);
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -445,7 +653,7 @@ mod tests {
     #[test]
     fn weights_in_a_subdirectory_are_reported_as_ready() {
         let cache = empty_cache();
-        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+        let weights = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join("abc123")
             .join("languages/french");
@@ -453,25 +661,55 @@ mod tests {
         std::fs::write(weights.join("codec/model.bin"), b"weights").unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Ready);
-        assert!(statuses[0].offline_ready);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Ready);
+        assert!(french.offline_ready);
         std::fs::remove_dir_all(cache).ok();
     }
 
     /// The Hugging Face client names an unfinished blob `<digest>.incomplete`.
-    /// While one is present the model is still downloading, even if a snapshot
-    /// directory was already created.
+    /// While the weights of the language are incomplete, that blob proves the
+    /// download is still running.
     #[test]
     fn an_unfinished_blob_is_reported_as_downloading() {
         let cache = empty_cache();
-        write_weights(&cache, "abc123", "languages/french");
-        let blobs = repository_cache_dir(&cache, FRENCH_REPOSITORY).join("blobs");
+        let weights = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
+            .join("snapshots")
+            .join("abc123")
+            .join("languages/french");
+        std::fs::create_dir_all(&weights).unwrap();
+        std::fs::write(weights.join("model.safetensors"), b"").unwrap();
+        let blobs = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY).join("blobs");
         std::fs::create_dir_all(&blobs).unwrap();
         std::fs::write(blobs.join("deadbeef.incomplete"), b"partial").unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Downloading);
-        assert!(!statuses[0].offline_ready);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Downloading);
+        assert!(!french.offline_ready);
+        std::fs::remove_dir_all(cache).ok();
+    }
+
+    /// Every language shares one repository, so downloading one of them
+    /// leaves unfinished blobs next to the languages that are already
+    /// complete. A complete language must stay usable offline.
+    #[test]
+    fn the_download_of_one_language_does_not_hold_another_language_back() {
+        let cache = empty_cache();
+        write_weights(&cache, "abc123", "languages/french");
+        let blobs = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY).join("blobs");
+        std::fs::create_dir_all(&blobs).unwrap();
+        std::fs::write(blobs.join("deadbeef.incomplete"), b"partial").unwrap();
+
+        let statuses = model_statuses(&cache, None);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Ready);
+        assert!(french.offline_ready);
+        assert_eq!(
+            status_of(&statuses, "english").state,
+            ModelState::NotInstalled,
+            "a language that was never downloaded must not read as ready"
+        );
         std::fs::remove_dir_all(cache).ok();
     }
 
@@ -483,7 +721,7 @@ mod tests {
         use std::os::unix::fs::symlink;
 
         let cache = empty_cache();
-        let weights = repository_cache_dir(&cache, FRENCH_REPOSITORY)
+        let weights = repository_cache_dir(&cache, POCKET_TTS_REPOSITORY)
             .join("snapshots")
             .join("abc123")
             .join("languages/french");
@@ -495,8 +733,9 @@ mod tests {
         .unwrap();
 
         let statuses = model_statuses(&cache, None);
-        assert_eq!(statuses[0].state, ModelState::Corrupted);
-        assert!(!statuses[0].offline_ready);
+        let french = status_of(&statuses, "french");
+        assert_eq!(french.state, ModelState::Corrupted);
+        assert!(!french.offline_ready);
         std::fs::remove_dir_all(cache).ok();
     }
 }

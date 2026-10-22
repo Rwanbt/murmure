@@ -76,18 +76,33 @@ pub fn set_sound_volume(app: AppHandle, percent: u8) -> Result<(), String> {
     crate::settings::save_settings(&app, &s)
 }
 
-/// The Pocket TTS engine accepts a finite catalog of local French models.
-fn supported_tts_model(model: &str) -> bool {
-    matches!(model, "french" | "french_24l")
-}
-
+/// The Pocket TTS engine accepts a finite catalog of local languages.
+///
+/// Selecting a language also selects its default voice, so the synthesis
+/// always speaks the chosen language with a voice that matches it. The
+/// user can then pick any other voice of the catalog. The voice that was
+/// selected is returned, so the interface never shows a voice the
+/// application does not speak with.
 #[command]
-pub fn set_tts_model(app: AppHandle, model: String) -> Result<(), String> {
-    if !supported_tts_model(&model) {
-        return Err("Unsupported Pocket TTS model".to_string());
+pub fn set_tts_model(app: AppHandle, model: String) -> Result<String, String> {
+    if !crate::settings::is_supported_tts_model(&model) {
+        return Err("Unsupported Pocket TTS language".to_string());
     }
     let mut settings = crate::settings::load_settings(&app);
     settings.tts_model = model;
+    settings.tts_voice = crate::settings::default_tts_voice(&settings.tts_model).to_string();
+    crate::settings::save_settings(&app, &settings)?;
+    Ok(settings.tts_voice)
+}
+
+/// The Pocket TTS engine accepts a finite catalog of local voices.
+#[command]
+pub fn set_tts_voice(app: AppHandle, voice: String) -> Result<(), String> {
+    if !crate::settings::is_supported_tts_voice(&voice) {
+        return Err("Unsupported Pocket TTS voice".to_string());
+    }
+    let mut settings = crate::settings::load_settings(&app);
+    settings.tts_voice = voice;
     crate::settings::save_settings(&app, &settings)
 }
 
@@ -123,15 +138,44 @@ pub fn set_tts_volume(app: AppHandle, percent: u8) -> Result<(), String> {
 
 #[cfg(test)]
 mod pocket_tts_settings_tests {
-    use super::*;
+    #[test]
+    fn only_supported_local_languages_are_allowed() {
+        for language in [
+            "english",
+            "french",
+            "german",
+            "portuguese",
+            "italian",
+            "spanish",
+            "dutch",
+        ] {
+            assert!(
+                crate::settings::is_supported_tts_model(language),
+                "{language} must be selectable"
+            );
+        }
+        assert!(!crate::settings::is_supported_tts_model("french_24l"));
+        assert!(!crate::settings::is_supported_tts_model("german_24l"));
+        assert!(!crate::settings::is_supported_tts_model(
+            "https://example.org/weights"
+        ));
+        assert!(!crate::settings::is_supported_tts_model(""));
+    }
 
     #[test]
-    fn only_supported_local_models_are_allowed() {
-        assert!(supported_tts_model("french"));
-        assert!(supported_tts_model("french_24l"));
-        assert!(!supported_tts_model("https://example.org/weights"));
-        assert!(!supported_tts_model("english"));
-        assert!(!supported_tts_model(""));
+    fn only_supported_local_voices_are_allowed() {
+        for voice in [
+            "alba", "daan", "estelle", "giovanni", "juergen", "lola", "rafael",
+        ] {
+            assert!(
+                crate::settings::is_supported_tts_voice(voice),
+                "{voice} must be selectable"
+            );
+        }
+        assert!(!crate::settings::is_supported_tts_voice(""));
+        assert!(!crate::settings::is_supported_tts_voice(
+            "https://example.org/voice.safetensors"
+        ));
     }
 }
 

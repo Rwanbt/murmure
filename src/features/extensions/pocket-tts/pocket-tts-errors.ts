@@ -35,6 +35,8 @@ const TTS_ERROR_MESSAGES: Record<string, string> = {
         "Le cache des modèles Pocket TTS n'est pas un dossier ordinaire.",
     'Text exceeds the Pocket TTS length limit': "Le texte dépasse la longueur maximale acceptée par Pocket TTS.",
     'No readable text was provided': "Aucun texte lisible n'a été fourni.",
+    'Unsupported Pocket TTS language': "Cette langue n'est pas prise en charge par Pocket TTS.",
+    'Unsupported Pocket TTS voice': "Cette voix n'est pas prise en charge par Pocket TTS.",
 };
 
 /**

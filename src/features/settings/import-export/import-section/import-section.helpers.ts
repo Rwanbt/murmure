@@ -31,6 +31,11 @@ const applySettings = async (categories: ExportedCategories): Promise<void> => {
     if (settings.tts_model != null) {
         await invoke('set_tts_model', { model: settings.tts_model });
     }
+    // The voice is applied after the language, which selects its default
+    // voice: a file without a voice keeps the default of its language.
+    if (settings.tts_voice != null) {
+        await invoke('set_tts_voice', { voice: settings.tts_voice });
+    }
     if (settings.tts_volume != null) {
         await invoke('set_tts_volume', { percent: settings.tts_volume });
     }

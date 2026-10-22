@@ -77,6 +77,7 @@ export const extractSystemSettings = (all: AppSettings): ExportedSystemSettings 
         sound_enabled: all.sound_enabled,
         sound_volume: all.sound_volume,
         tts_model: all.tts_model,
+        tts_voice: all.tts_voice,
         tts_volume: all.tts_volume,
         lower_output_while_recording: all.lower_output_while_recording,
         output_volume_while_recording: all.output_volume_while_recording,
