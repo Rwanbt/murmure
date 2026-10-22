@@ -1,4 +1,6 @@
-//! Explicit CPU-only French voice preview using the standalone Kyutai binary.
+//! Explicit CPU-only voice preview using the standalone Kyutai binary.
+//! The language and the voice come from the settings, so the selected
+//! combination is the one that is actually spoken.
 //! No user text is placed in process arguments in this first integration.
 //! Future arbitrary-text synthesis MUST use a different privacy-safe transport.
 
@@ -16,7 +18,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, Manager};
 
-const PREVIEW_TEXT: &str = "Bonjour ! Voici la synthèse vocale française locale de Murmure.";
 const POLL_INTERVAL: Duration = Duration::from_millis(80);
 const MAX_SPEECH_CHARS: usize = 1_000;
 const MAX_GENERATION: Duration = Duration::from_secs(600);
@@ -254,14 +255,14 @@ fn binary_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
+fn preview_args(output: &Path, model: &str, voice: &str) -> Vec<std::ffi::OsString> {
     use std::ffi::OsString;
     [
         OsString::from("generate"),
         OsString::from("--language"),
         OsString::from(model),
         OsString::from("--voice"),
-        OsString::from("estelle"),
+        OsString::from(voice),
         OsString::from("--device"),
         OsString::from("cpu"),
         OsString::from("--text"),
@@ -272,7 +273,7 @@ fn preview_args(output: &Path, model: &str) -> Vec<std::ffi::OsString> {
     .into()
 }
 
-fn configure_model_source(command: &mut Command, cache_dir: &Path) {
+pub(super) fn configure_model_source(command: &mut Command, cache_dir: &Path) {
     // Isolate Murmure's model cache from system-wide Hugging Face credentials.
     // Do not inherit a personal token or an alternative untrusted model host.
     command
@@ -348,6 +349,7 @@ fn supervise_generation(
     mut on_state: impl FnMut(&'static str),
 ) -> Result<GenerationOutcome, String> {
     let mut command = Command::new(binary);
+    super::hide_console_window(&mut command);
     configure_model_source(&mut command, cache_dir);
     on_state("generating");
     let mut child = command
@@ -427,36 +429,201 @@ fn verify_generated_wave(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Why a phrase could not be played through the resident server.
+enum WarmFailure {
+    /// Nothing was heard yet: the standalone generator can still speak.
+    Unavailable(String),
+    /// Playback already started, so the failure must be reported instead of
+    /// being played a second time by the fallback.
+    Interrupted(String),
+}
+
+/// The language and the voice the synthesis must use.
+///
+/// The two travel together because they always describe one voice of one
+/// language, and the runtime is started with both.
+#[derive(Clone, Copy)]
+struct VoiceSelection<'a> {
+    language: &'a str,
+    voice: &'a str,
+}
+
 fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(), String> {
     // A request may have been queued before consent was revoked. Check again
     // in the worker before starting the external model process.
     require_tts_approval(crate::settings::load_settings(app).tts_model_download_approved)?;
     let binary = binary_path(app)?;
-    let wave = TempWave(std::env::temp_dir().join(format!(
-        "murmure-pocket-preview-{}.wav",
-        uuid::Uuid::new_v4()
-    )));
 
     let settings = crate::settings::load_settings(app);
-    let model = if settings.tts_model == "french_24l" {
-        "french_24l"
-    } else {
-        "french"
+    // The language and the voice come from the settings, so the combination
+    // the user selected is the one that is spoken. The settings are
+    // normalized when they are read, so an identifier from an older build
+    // falls back to the catalog instead of failing the synthesis.
+    let model = settings.tts_model.as_str();
+    let voice = settings.tts_voice.as_str();
+    let selection = VoiceSelection {
+        language: model,
+        voice,
     };
     if let Ok(mut active) = ACTIVE_MODEL.lock() {
         *active = Some(model.to_string());
     }
     let _active_guard = ActiveModelGuard;
     // The first, user-approved invocation may download the public model.
-    // Restrict the CLI to a dedicated app cache with no inherited HF login.
+    // Restrict the runtime to a dedicated app cache with no inherited HF login.
     let cache_dir = pocket_tts_model_cache(app)?;
     std::fs::create_dir_all(&cache_dir)
         .map_err(|_| "Unable to create the local TTS model cache".to_string())?;
-    match supervise_generation(
-        &binary,
-        &preview_args(&wave.0, model),
+
+    match warm_speech(
+        app,
+        rx,
         text,
+        &binary,
+        &selection,
         &cache_dir,
+        settings.tts_volume,
+    ) {
+        Ok(()) => Ok(()),
+        Err(WarmFailure::Unavailable(reason)) => {
+            // The warm server is an optimisation, never a requirement: the
+            // standalone generator keeps the feature usable when the port,
+            // the sub-command or the process supervision is unavailable.
+            log::warn!(
+                "The resident Pocket TTS server is unavailable ({}); using the standalone generator",
+                reason
+            );
+            cold_speech(
+                app,
+                rx,
+                text,
+                &binary,
+                &selection,
+                &cache_dir,
+                settings.tts_volume,
+            )
+        }
+        Err(WarmFailure::Interrupted(reason)) => Err(reason),
+    }
+}
+
+/// Speak through the resident server, whose model is already loaded.
+///
+/// The server streams the generated WAV, so playback starts while the rest of
+/// the sentence is still being produced instead of after a full silence.
+fn warm_speech(
+    app: &AppHandle,
+    rx: &Receiver<Request>,
+    text: &str,
+    binary: &Path,
+    selection: &VoiceSelection<'_>,
+    cache_dir: &Path,
+    volume: u8,
+) -> Result<(), WarmFailure> {
+    let port = super::serve::ensure_running(binary, selection.language, selection.voice, cache_dir)
+        .map_err(WarmFailure::Unavailable)?;
+    emit(app, "generating", None);
+    let body = super::serve::request_speech(port, text).map_err(WarmFailure::Unavailable)?;
+    let mut source =
+        super::stream::PcmStream::open(body, MAX_GENERATION).map_err(WarmFailure::Unavailable)?;
+    let rate = rodio::Source::sample_rate(&source);
+    let channels = rodio::Source::channels(&source);
+    if STREAM_CANNOT_KEEP_UP.load(Ordering::Relaxed) {
+        // A loaded machine no longer generates faster than playback. Waiting
+        // once for the whole phrase is silent but clean, where streaming would
+        // be early but chopped.
+        let (samples, failed) = source.collect();
+        if failed && samples.is_empty() {
+            return Err(WarmFailure::Unavailable(
+                "Pocket TTS produced no audio".to_string(),
+            ));
+        }
+        return match play_source(
+            app,
+            rx,
+            rodio::buffer::SamplesBuffer::new(channels, rate, samples),
+            volume,
+            None,
+        ) {
+            Ok(_) => Ok(()),
+            Err(reason) => Err(WarmFailure::Interrupted(reason)),
+        };
+    }
+    let failure = source.failure_flag();
+    let stats = source.stats();
+    // Buffer the lead here, on the worker thread: the mixer callback must
+    // never wait for the network, which would click on the first samples.
+    source.prime();
+    let played = play_source(app, rx, source, volume, Some(failure));
+    report_stream_health(&stats, rate.get());
+    match played {
+        Ok(PlayOutcome::Stopped) if !stats.finished() => {
+            // The user stopped while the runtime was still generating: that
+            // work would delay the next phrase, so it is dropped with the
+            // server.
+            super::serve::abandon_generation();
+            Ok(())
+        }
+        Ok(_) => Ok(()),
+        Err(reason) => Err(WarmFailure::Interrupted(reason)),
+    }
+}
+
+/// Set once the measurements prove that this machine generates slower than it
+/// plays, so the following phrases are buffered instead of chopped.
+static STREAM_CANNOT_KEEP_UP: AtomicBool = AtomicBool::new(false);
+
+/// Above this share of silence the stream is not merely jittery: it cannot
+/// follow the playback rate and the next phrases must be buffered.
+const STARVATION_TOLERANCE_PERCENT: u64 = 2;
+
+/// Report whether the stream starved, which is what an audible stutter from
+/// the streaming path is made of. Only counters are logged, never the
+/// spoken content.
+fn report_stream_health(stats: &super::stream::StreamStats, sample_rate: u32) {
+    let samples = stats.samples();
+    let starved = stats.starved();
+    if starved == 0 {
+        log::debug!("Pocket TTS stream: {samples} samples, no starvation");
+        return;
+    }
+    let silent_ms = if sample_rate == 0 {
+        0
+    } else {
+        starved * 1_000 / u64::from(sample_rate)
+    };
+    if samples > 0 && starved * 100 > samples * STARVATION_TOLERANCE_PERCENT {
+        STREAM_CANNOT_KEEP_UP.store(true, Ordering::Relaxed);
+        log::info!(
+            "Pocket TTS stream could not keep up: {starved} of {samples} samples ({silent_ms} ms) were silence; the following phrases will be buffered before playback"
+        );
+        return;
+    }
+    log::info!(
+        "Pocket TTS stream briefly starved: {starved} of {samples} samples ({silent_ms} ms) were silence"
+    );
+}
+
+/// Speak with one standalone process per phrase: the historical path, kept as
+/// the fallback because it depends on nothing but the pinned binary.
+fn cold_speech(
+    app: &AppHandle,
+    rx: &Receiver<Request>,
+    text: &str,
+    binary: &Path,
+    selection: &VoiceSelection<'_>,
+    cache_dir: &Path,
+    volume: u8,
+) -> Result<(), String> {
+    let wave = TempWave(std::env::temp_dir().join(format!(
+        "murmure-pocket-preview-{}.wav",
+        uuid::Uuid::new_v4()
+    )));
+    match supervise_generation(
+        binary,
+        &preview_args(&wave.0, selection.language, selection.voice),
+        text,
+        cache_dir,
         rx,
         MAX_GENERATION,
         |state| emit(app, state, None),
@@ -469,13 +636,37 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
     let file = File::open(&wave.0).map_err(|_| "Pocket TTS produced no WAV".to_string())?;
     let source =
         rodio::Decoder::new(file).map_err(|_| "Pocket TTS WAV could not be decoded".to_string())?;
+    play_source(app, rx, source, volume, None).map(|_| ())
+}
+
+/// How a playback ended, so a Stop can also release the server work it left
+/// behind.
+enum PlayOutcome {
+    Finished,
+    Stopped,
+}
+
+/// Play a prepared source and apply the transport requests while it runs.
+///
+/// Shared by both synthesis paths so pause, resume and stop behave the same
+/// whether the audio comes from a file or from the streamed generation.
+fn play_source<S>(
+    app: &AppHandle,
+    rx: &Receiver<Request>,
+    source: S,
+    volume: u8,
+    failure: Option<Arc<AtomicBool>>,
+) -> Result<PlayOutcome, String>
+where
+    S: rodio::Source + Send + 'static,
+{
     let builder = rodio::DeviceSinkBuilder::from_default_device()
         .map_err(|_| "No usable audio output device".to_string())?;
     let output = builder
         .open_sink_or_fallback()
         .map_err(|_| "Unable to open output device".to_string())?;
     let player = rodio::Player::connect_new(output.mixer());
-    player.set_volume(f32::from(settings.tts_volume.min(100)) / 100.0);
+    player.set_volume(f32::from(volume.min(100)) / 100.0);
     player.append(source);
     emit(app, "playing", None);
 
@@ -486,19 +677,27 @@ fn run_speech(app: &AppHandle, rx: &Receiver<Request>, text: &str) -> Result<(),
                 PlayerTransition::Playing => emit(app, "playing", None),
                 PlayerTransition::Stopped => {
                     emit(app, "stopped", None);
-                    return Ok(());
+                    return Ok(PlayOutcome::Stopped);
                 }
                 PlayerTransition::Noop => {}
             },
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 player.stop();
-                return Ok(());
+                return Ok(PlayOutcome::Finished);
             }
         }
     }
+    if failure.is_some_and(|flag| flag.load(Ordering::Acquire)) {
+        return Err("Pocket TTS generation was interrupted".to_string());
+    }
     emit(app, "idle", None);
-    Ok(())
+    Ok(PlayOutcome::Finished)
+}
+
+/// Stop the resident server, called when the application exits.
+pub fn shutdown() {
+    super::serve::shutdown();
 }
 
 pub fn init(app: &AppHandle) {
@@ -512,7 +711,13 @@ pub fn init(app: &AppHandle) {
     thread::spawn(move || {
         while let Ok(request) = rx.recv() {
             let speech = match request {
-                Request::Preview => Some(PREVIEW_TEXT.to_string()),
+                // The preview speaks a sentence written in the selected
+                // language, so it proves the language is the one being
+                // synthesized.
+                Request::Preview => {
+                    let settings = crate::settings::load_settings(&handle);
+                    Some(super::models::preview_text(&settings.tts_model).to_string())
+                }
                 Request::Speak(text) => Some(text),
                 _ => None,
             };
@@ -1296,16 +1501,28 @@ mod tests {
         assert!(checked_text(&"é".repeat(MAX_SPEECH_CHARS + 1)).is_err());
     }
 
+    /// The runtime must receive the language and the voice the user chose,
+    /// and never a language fixed in the source.
     #[test]
-    fn preview_is_french_cpu_only_with_no_runtime_user_text() {
-        let args = preview_args(Path::new("preview.wav"), "french");
+    fn preview_uses_the_selected_language_and_voice() {
+        let args = preview_args(Path::new("preview.wav"), "german", "juergen");
         let parts: Vec<_> = args.iter().map(|a| a.to_string_lossy()).collect();
-        assert!(parts.windows(2).any(|p| p == ["--language", "french"]));
-        let large = preview_args(Path::new("preview.wav"), "french_24l");
-        let pieces: Vec<_> = large.iter().map(|a| a.to_string_lossy()).collect();
-        assert!(pieces.windows(2).any(|p| p == ["--language", "french_24l"]));
+        assert!(parts.windows(2).any(|p| p == ["--language", "german"]));
         assert!(parts.windows(2).any(|p| p == ["--device", "cpu"]));
-        assert!(parts.windows(2).any(|p| p == ["--voice", "estelle"]));
+        assert!(parts.windows(2).any(|p| p == ["--voice", "juergen"]));
         assert!(parts.windows(2).any(|p| p == ["--text", "-"]));
+    }
+
+    #[test]
+    fn every_catalogued_language_can_be_previewed_on_the_cpu() {
+        for language in crate::settings::SUPPORTED_TTS_MODELS {
+            let args = preview_args(Path::new("preview.wav"), language, "estelle");
+            let parts: Vec<_> = args.iter().map(|a| a.to_string_lossy()).collect();
+            assert!(
+                parts.windows(2).any(|p| p == ["--language", language]),
+                "{language} never reaches the runtime"
+            );
+            assert!(parts.windows(2).any(|p| p == ["--device", "cpu"]));
+        }
     }
 }

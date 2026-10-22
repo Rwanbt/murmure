@@ -74,6 +74,7 @@ qualification, not for lack of an official build.
 | --- | --- | --- |
 | STT — recording, transcription, permissions | PARTIAL | Pre-existing upstream implementation, not re-qualified in this effort. See §4. |
 | TTS — French synthesis | **PROVEN** | CI job `Pocket TTS real French WAV on Windows`, green on PR #40/#41/#42/#46. Local run: `PASS: French CPU model generated non-silent PCM WAV, duration=3.64s, Hz=24000, peak=10268`. |
+| TTS — multilingual catalog | **PROVEN (code, unit tests, real runtime and real interface)** | Seven languages (English, French, German, Portuguese, Italian, Spanish, Dutch) and the 27 published voices of each. The catalog lives in `settings::types`, the status exposes it through `tts::models`, `tts::preview` passes `--language` and `--voice`, and `tts::serve` starts the resident server with `--default-voice`. `every_catalogued_language_is_also_transcribed_by_parakeet` proves that every language offered is one of the 25 Parakeet TDT 0.6B v3 languages, so the transcription and the synthesis cover the same set. The pinned runtime confirms the same set: `pocket-tts.exe generate --help` lists `english`, `french`, `german`, `portuguese`, `italian`, `spanish` and `dutch`. Real runs on this machine: `generate --language german --voice juergen` produced 24 kHz mono, 4.04 s, 193 964 bytes in 824 ms (4.66× real time), and `serve --language german --default-voice juergen` answered a `POST /tts` with 140 204 bytes of 24 kHz mono audio after generating 2 720 ms in 595 ms (4.57× real time). The per-language default voices are the ones the CLI itself declares (`giovanni` for Italian, `lola` for Spanish, `juergen` for German, `rafael` for Portuguese, `estelle` for French, `alba` otherwise). The selectors of the real interface were read by Windows UI Automation: 7 languages and 27 voices, no French-only wording left. |
 | TTS — audio playback | PARTIAL | Rodio playback is implemented and unit-tested; audible output is MANUAL. |
 | TTS — pause / resume / stop | PARTIAL | Implemented and unit-tested (`supervise_generation`, `Player::pause`), **global hotkey for pause/resume is OPEN** — see §4. |
 | TTS — volume | PROVEN (setting persisted, applied to the player) | `settings.rs`, `pocket-tts.tsx` |
@@ -300,8 +301,9 @@ tree, so the clicks below are real clicks on the real screen.
 | 4. Runtime reported as not installed, install button offering the pinned release | **PROVEN** | "Pocket TTS n'est pas installé dans Murmure. Installez explicitement le moteur officiel vérifié." with the button and the link to the official release |
 | 5. Install the runtime, watch progress, cancel, reinstall | **PARTIAL** | installed from the interface and the executable landed in `%LOCALAPPDATA%\com.al1x-ai.murmure\pocket-tts\bin`, 21.1 MB. The cancel path was not exercised from the interface; it is covered by `cancelled_install_never_publishes_an_executable` in CI |
 | 6. No model cache before consent | **PROVEN** | the model list read "Pas encore téléchargé" and no cache directory existed |
-| 7. Grant consent, run a French preview, audio produced | **PROVEN** | consent toggled on, the buttons enabled, the preview started, the French weights downloaded (432.7 MB, `model.safetensors` 208.9 MB plus tokenizer and the `estelle` voice) and the run completed with the temporary wave cleaned up |
+| 7. Grant consent, run a French preview, audio produced | **PROVEN** | consent toggled on, the buttons enabled, the preview started, the French weights downloaded (~216 MiB: `model.safetensors` 208.9 MiB, the 7.2 MiB `estelle` voice and the tokenizer) and the run completed with the temporary wave cleaned up |
 | 8. Pause, resume and stop from the interface | **PARTIAL** | the play button is wired: invoking it from the interface started a real generation. During playback the screen showed `Pause` and `Arrêter` enabled with `Reprendre` disabled, which is the expected transport state. The three buttons were not clicked, and the bindings were not pressed |
+| 8b. Speech language and voice selectors | **PROVEN (interface read by Windows UI Automation on the release build)** | the release binary (29 177 856 bytes, frontend embedded) was driven to **Extensions → Synthèse vocale** through the WebView2 tree. The screen reads `Langue de synthèse` with the 7 items `English, Français, Deutsch, Português, Italiano, Español, Nederlands` and `Voix` with the 27 items `alba, anna, azelma, bill_boerst, caro_davy, charles, cosette, daan, eponine, estelle, eve, fantine, george, giovanni, jane, javert, jean, juergen, lola, marius, mary, michael, paul, peter_yearsley, rafael, stuart_bell, vera`. The status list names the 7 languages, `Français` being `Prêt, utilisable hors ligne · 209 MB · 1e08e6a23401 · CC BY 4.0` and the other six `Pas encore téléchargé`. No French-only wording is left on the screen: the subtitle reads `Écoutez une voix générée localement sur le processeur.`, the consent reads `J'autorise Pocket TTS à télécharger les fichiers du modèle et de la voix…` and the button reads `Tester la voix` |
 | 9. Change the volume and hear it on the next playback | **NOT EXECUTED** | the slider reads 80 % and is wired to `set_tts_volume`, applied at the next playback; nobody moved it |
 | 10. Read a selection with the global shortcut | **PROVEN** | a Notepad window held a French sentence, select all, then `Ctrl+Alt+L`: a `pocket-tts` process and a temporary wave appeared. The same press was repeated with the right Alt alone, which sends `Ctrl+Alt`, so `AltGr + L` works with one hand; `AltGr + K` and `AltGr + P` are the same registered combination for the other two bindings |
 | 11. Close the window, stay in the tray, quit from the tray | **PARTIAL** | the window closes to the tray and the process stays alive, confirmed twice; quitting from the tray menu was not exercised |
@@ -333,15 +335,19 @@ package that cannot transcribe passed. Both are fixed.
    Confirm the executable is present and verified.
 6. Confirm **no model cache** was created before consent.
 7. Grant consent, run a French preview, and confirm audio is produced.
-8. Pause, resume and stop from the interface.
-9. Change the volume and confirm it applies to the next playback.
-10. Select a French passage in another application and read it with the
+8. Change the **speech language** to German, confirm that the voice selector
+   switches to the German default voice, and that the preview now speaks
+   German. Then pick another voice of the catalog and confirm the preview
+   uses it.
+9. Pause, resume and stop from the interface.
+10. Change the volume and confirm it applies to the next playback.
+11. Select a French passage in another application and read it with the
     global shortcut.
-11. Close the window and confirm the application stays in the tray; quit it
+12. Close the window and confirm the application stays in the tray; quit it
     from the tray menu.
-12. Restart the application with the network disabled and confirm the
+13. Restart the application with the network disabled and confirm the
     cached model is reused.
-13. Delete the model cache and confirm the installed runtime is still
+14. Delete the model cache and confirm the installed runtime is still
     present and still verified.
 
 ---

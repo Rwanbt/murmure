@@ -1,5 +1,83 @@
 use serde::{Deserialize, Serialize};
 
+/// Pocket TTS languages accepted by the backend and the UI.
+///
+/// These are the seven languages the official Pocket TTS release publishes,
+/// and every one of them belongs to the 25-language set of the Parakeet
+/// TDT 0.6B v3 model, so the transcription and the speech synthesis cover
+/// the same languages. The identifier is the one the pinned CLI expects
+/// after `--language`, and it is also the directory that holds the weights.
+pub const SUPPORTED_TTS_MODELS: [&str; 7] = [
+    "english",
+    "french",
+    "german",
+    "portuguese",
+    "italian",
+    "spanish",
+    "dutch",
+];
+/// The language used for new settings and for legacy values that are no
+/// longer part of the catalog.
+pub const DEFAULT_TTS_MODEL: &str = "french";
+
+/// The voices the official Pocket TTS release publishes for every language.
+pub const SUPPORTED_TTS_VOICES: [&str; 27] = [
+    "alba",
+    "anna",
+    "azelma",
+    "bill_boerst",
+    "caro_davy",
+    "charles",
+    "cosette",
+    "daan",
+    "eponine",
+    "estelle",
+    "eve",
+    "fantine",
+    "george",
+    "giovanni",
+    "jane",
+    "javert",
+    "jean",
+    "juergen",
+    "lola",
+    "marius",
+    "mary",
+    "michael",
+    "paul",
+    "peter_yearsley",
+    "rafael",
+    "stuart_bell",
+    "vera",
+];
+/// The voice used when the settings carry no voice.
+pub const DEFAULT_TTS_VOICE: &str = "estelle";
+
+pub fn is_supported_tts_model(model: &str) -> bool {
+    SUPPORTED_TTS_MODELS.contains(&model)
+}
+
+pub fn is_supported_tts_voice(voice: &str) -> bool {
+    SUPPORTED_TTS_VOICES.contains(&voice)
+}
+
+/// The voice a language speaks with when the user has not chosen one.
+///
+/// These are the defaults the pinned runtime itself declares: the CLI
+/// documents `giovanni` for Italian, `lola` for Spanish, `juergen` for
+/// German, `rafael` for Portuguese, `estelle` for French and `alba` for
+/// every other language.
+pub fn default_tts_voice(language: &str) -> &'static str {
+    match language {
+        "italian" => "giovanni",
+        "spanish" => "lola",
+        "german" => "juergen",
+        "portuguese" => "rafael",
+        "french" => "estelle",
+        _ => "alba",
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PasteMethod {
@@ -53,7 +131,8 @@ pub struct AppSettings {
     pub language: String,      // UI language code (e.g., "en", "fr")
     pub sound_enabled: bool,
     pub sound_volume: u8,
-    pub tts_model: String, // "french" | "french_24l" (allowlisted)
+    pub tts_model: String, // supported language id; normalized on load
+    pub tts_voice: String, // supported voice id; normalized on load
     pub tts_volume: u8,    // 0..100; applied to the next playback
     pub tts_model_download_approved: bool, // explicit local approval, never migrated from exports
     pub lower_output_while_recording: bool,
@@ -174,7 +253,8 @@ impl Default for AppSettings {
             language: "default".to_string(),
             sound_enabled: true,
             sound_volume: 50,
-            tts_model: "french".to_string(),
+            tts_model: DEFAULT_TTS_MODEL.to_string(),
+            tts_voice: DEFAULT_TTS_VOICE.to_string(),
             tts_volume: 80,
             tts_model_download_approved: false,
             lower_output_while_recording: false,
@@ -229,5 +309,58 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.record_shortcut, "");
+    }
+
+    #[test]
+    fn the_tts_catalog_lists_every_language_pocket_tts_publishes() {
+        assert_eq!(SUPPORTED_TTS_MODELS.len(), 7);
+        for language in [
+            "english",
+            "french",
+            "german",
+            "portuguese",
+            "italian",
+            "spanish",
+            "dutch",
+        ] {
+            assert!(is_supported_tts_model(language), "{language} is missing");
+        }
+        assert!(!is_supported_tts_model("french_24l"));
+        assert!(!is_supported_tts_model("german_24l"));
+        assert!(!is_supported_tts_model("https://example.org/weights"));
+        assert!(!is_supported_tts_model(""));
+    }
+
+    #[test]
+    fn the_voice_catalog_lists_every_voice_pocket_tts_publishes() {
+        assert_eq!(SUPPORTED_TTS_VOICES.len(), 27);
+        for voice in [
+            "alba", "daan", "estelle", "giovanni", "juergen", "lola", "rafael",
+        ] {
+            assert!(is_supported_tts_voice(voice), "{voice} is missing");
+        }
+        assert!(!is_supported_tts_voice(""));
+        assert!(!is_supported_tts_voice(
+            "https://example.org/voice.safetensors"
+        ));
+    }
+
+    #[test]
+    fn every_language_has_a_default_voice_from_the_catalog() {
+        for language in SUPPORTED_TTS_MODELS {
+            let voice = default_tts_voice(language);
+            assert!(
+                is_supported_tts_voice(voice),
+                "{language} has no catalogued default voice"
+            );
+        }
+        assert_eq!(default_tts_voice("english"), "alba");
+        assert_eq!(default_tts_voice("french"), "estelle");
+        assert_eq!(default_tts_voice("dutch"), "alba");
+        assert_eq!(
+            default_tts_voice("unknown"),
+            "alba",
+            "an unknown language falls back to the runtime default"
+        );
     }
 }

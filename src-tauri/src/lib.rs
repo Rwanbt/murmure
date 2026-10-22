@@ -538,6 +538,7 @@ pub fn run() {
             set_sound_enabled,
             set_sound_volume,
             set_tts_model,
+            set_tts_voice,
             set_tts_volume,
             set_tts_model_download_approved,
             set_lower_output_while_recording,
@@ -644,6 +645,7 @@ pub fn run() {
                 crate::utils::enigo_session::shutdown(app_handle);
                 crate::smartmic::input_bridge::shutdown();
                 audio::output_volume::restore_pending(app_handle);
+                tts::preview::shutdown();
             }
         });
 }
